@@ -46,15 +46,10 @@ class BioCreativeData(object):
         max_seq_length: (int) maximum sentence length in the dataset
         """
 
-        # abstracts_dict = {}
-        # entities_dict = {}
-        # relations_dict = {}
-
         if data == 0:
             abstracts_dict = self.training_abstracts = self.parse_abstract_file(self.training_abstract_location)
             entities_dict = self.training_entities = self.parse_entity_file(self.training_entities_location)
             relations_dict = self.training_relations = self.parse_relation_file(self.training_relations_location)
-
         elif data == 1:
             abstracts_dict = self.development_abstracts = self.parse_abstract_file(self.development_abstract_location)
             entities_dict = self.development_entities = self.parse_entity_file(self.development_entities_location)
@@ -89,6 +84,7 @@ class BioCreativeData(object):
             # update mapping(iob, pos, word frequency) dictionary
             # find max length sentence
             for sentence in sentences:
+
                 # add sentence index to sentence_offsets
                 sentence_offsets.append(abstract_text.find(sentence))
 
@@ -203,7 +199,7 @@ class BioCreativeData(object):
             # update iob tag mapping
             token_iob_tag = token[2]
             if token_iob_tag not in iob_tag_mapping:
-                cur_available_iob_id = len(token_iob_tag)
+                cur_available_iob_id = len(iob_tag_mapping)
                 iob_tag_mapping[token_iob_tag] = cur_available_iob_id
 
         return [pos_tag_mapping, iob_tag_mapping, word_frequencies, max_seq_length]
@@ -230,7 +226,7 @@ class BioCreativeData(object):
     def parse_abstract_file(file_location):
         """
         Takes BioCreative Abstract file and returns a dictionary.
-        :return: dictionary stores abstract ids and corresponding abstract
+        :return result: dictionary stores abstract ids and corresponding abstract
         """
 
         result = {}
@@ -249,7 +245,7 @@ class BioCreativeData(object):
     def parse_entity_file(file_location):
         """
         takes biocreative entity file and return a dictionary
-        :return: entities dictionary. Each abstract key contains a entity list
+        :return result: entities dictionary. Each abstract key contains a entity list
         """
 
         result = {}
@@ -272,7 +268,7 @@ class BioCreativeData(object):
     def parse_relation_file(file_location):
         """
         takes the biocreative relation files and returns content dictionary
-        :return: (dictionary) abstract_id -> (list)relations
+        :return result: (dictionary) abstract_id -> (list)relations
         """
 
         result = {}

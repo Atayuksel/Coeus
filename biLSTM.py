@@ -2,60 +2,55 @@ import tensorflow as tf
 from tensorflow.contrib import rnn
 import numpy as np
 import nltk
-from itertools import combinations
 import math
 import pickle
 import os
 import progressbar
-
 import biocreative as bc
+import configparser
 
-# baseline or edit distance
 METHOD = 'BASELINE'
+# METHOD = 'EDITDISTANCE'
 
-# multiclass or binary
-MODE = 'BINARY'
+CELL = 'LSTM'
+# CELL = 'GRU'
 
-# tensorflow error loggingos.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+TYPE = 'BINARY'
+# TYPE = 'MULTICLASS'
 
-# dataset parameters
-WORD_EMBEDDING_SIZE = 300
-ED_NUM_CLASS = 14
+# tensorflow error logging
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
-if MODE == 'BINARY':
-    NUM_CLASS = 2
-elif MODE == 'MULTICLASS':
-    NUM_CLASS = 6
+config = configparser.ConfigParser()
+config.read('config.ini')
 
-# model parameters
-NUM_EPOCH = 50
-BATCH_SIZE = 100
-LEARNING_RATE = 0.001
-NUM_HIDDEN = 128
-TAG_EMBEDDING_SIZE = 20
+WORD_EMBEDDING_SIZE = int(config['MODEL_VARS']['WORD_EMBEDDING_SIZE'])
+ED_NUM_CLASS = int(config['MODEL_VARS']['ED_NUM_CLASS'])
+NUM_EPOCH = int(config['MODEL_VARS']['NUM_EPOCH'])
+BATCH_SIZE = int(config['MODEL_VARS']['BATCH_SIZE'])
+LEARNING_RATE = float(config['MODEL_VARS']['LEARNING_RATE'])
+TAG_EMBEDDING_SIZE = int(config['MODEL_VARS']['TAG_EMBEDDING_SIZE'])
 
-# file directories
-PRE_TRAINED_GLOVE_LOCATION = "glove.6B/glove.6B." + str(WORD_EMBEDDING_SIZE) + "d.txt"
+CELL_TYPE = config[CELL]['CELL_TYPE']
+NUM_HIDDEN = int(config[CELL]['NUM_HIDDEN'])
 
-TRA_BASE_LOCATION = "ChemProt_Corpus/chemprot_training/chemprot_training/"
-TRA_ABSTRACT_LOCATION = TRA_BASE_LOCATION + "chemprot_training_abstracts.tsv"
-TRA_ENTITIES_LOCATION = TRA_BASE_LOCATION + "chemprot_training_entities.tsv"
-TRA_RELATION_LOCATION = TRA_BASE_LOCATION + "chemprot_training_relations.tsv"
+MODE = config[TYPE]['MODE']
+NUM_CLASS = int(config[TYPE]['NUM_CLASS'])
 
-DEV_BASE_LOCATION = "ChemProt_Corpus/chemprot_development/chemprot_development/"
-DEV_ABSTRACT_LOCATION = DEV_BASE_LOCATION + "chemprot_development_abstracts.tsv"
-DEV_ENTITIES_LOCATION = DEV_BASE_LOCATION + "chemprot_development_entities.tsv"
-DEV_RELATION_LOCATION = DEV_BASE_LOCATION + "chemprot_development_relations.tsv"
-
-TEST_BASE_LOCATION = "ChemProt_Corpus/chemprot_test_gs/chemprot_test_gs/"
-TEST_ABSTRACT_LOCATION = TEST_BASE_LOCATION + "chemprot_test_abstracts_gs.tsv"
-TEST_ENTITIES_LOCATION = TEST_BASE_LOCATION + "chemprot_test_entities_gs.tsv"
-TEST_RELATION_LOCATION = TEST_BASE_LOCATION + "chemprot_test_relations_gs.tsv"
-
-PROTEIN_NAME_LOCATION = "dataset/full_protein_names.pkl"
-PROTEIN_LABEL_LOCATION = "dataset/full_protein_labels.pkl"
-
-TENSORBOARD_OUT = "./tensorboard"
+# file locations
+TRA_ABSTRACT_LOCATION = config['FILE_LOCATION']['TRA_ABSTRACT_LOCATION']
+TRA_ENTITIES_LOCATION = config['FILE_LOCATION']['TRA_ENTITIES_LOCATION']
+TRA_RELATION_LOCATION = config['FILE_LOCATION']['TRA_RELATION_LOCATION']
+DEV_ABSTRACT_LOCATION = config['FILE_LOCATION']['DEV_ABSTRACT_LOCATION']
+DEV_ENTITIES_LOCATION = config['FILE_LOCATION']['DEV_ENTITIES_LOCATION']
+DEV_RELATION_LOCATION = config['FILE_LOCATION']['DEV_RELATION_LOCATION']
+TEST_ABSTRACT_LOCATION = config['FILE_LOCATION']['TEST_ABSTRACT_LOCATION']
+TEST_ENTITIES_LOCATION = config['FILE_LOCATION']['TEST_ENTITIES_LOCATION']
+TEST_RELATION_LOCATION = config['FILE_LOCATION']['TEST_RELATION_LOCATION']
+PROTEIN_NAME_LOCATION = config['FILE_LOCATION']['PROTEIN_NAME_LOCATION']
+PROTEIN_LABEL_LOCATION = config['FILE_LOCATION']['PROTEIN_LABEL_LOCATION']
+PRE_TRAINED_GLOVE_LOCATION = config['FILE_LOCATION']['GLOVE']
+TENSORBOARD_OUT = config['FILE_LOCATION']['TENSORBOARD_OUT']
 
 
 def save_to_pickle(data, file_name):
@@ -116,13 +111,12 @@ def create_position_embed_map(max_value):
 def get_training_dataset(biocreative_dataset):
     """
     obtain training dataset from biocreative
-    :return:
-    res_dataset: list of instances(instance dict)
-    res_labels: list of labels(int)
-    res_word_freq: word frequency dictionary
-    res_pos_mapping: pos tags to id mapping
-    res_iob_mapping: iob tags to id mapping
-    res_max_length: length of the maximum sentence
+    :return res_dataset: list of instances(instance dict)
+    :return res_labels: list of labels(int)
+    :return res_word_freq: word frequency dictionary
+    :return res_pos_mapping: pos tags to id mapping
+    :return res_iob_mapping: iob tags to id mapping
+    :return res_max_length: length of the maximum sentence
     """
 
     if check_file('training_dataset'):
@@ -153,9 +147,8 @@ def get_training_dataset(biocreative_dataset):
 def get_development_dataset(biocreative_dataset):
     """
     obtain development dataset from biocreative
-    :return:
-    res_dataset: list of instances(instance dict)
-    res_labels: list of labels(int)
+    :return res_dataset: list of instances(instance dict)
+    :return res_labels: list of labels(int)
     """
 
     if check_file('development_dataset'):
@@ -918,9 +911,10 @@ mappings = {
 
 # Edit Distance
 # the name of pre-calculated edit distance file is 'total_ed_protein_classes'
-filename = 'total_protein_dataset'
-if check_file(filename):
-    entity_family_mapping = load_from_pickle('total_protein_dataset')
+trained_distance_directory = "pre_trained_edit_distance/total_protein_dataset.pickle"
+if os.path.isfile(trained_distance_directory):
+    with open(trained_distance_directory, 'rb') as pickle_file:
+        entity_family_mapping = pickle.load(pickle_file)
     run_edit_distance = False
     print("Edit Distance file is loaded.")
 else:
@@ -955,7 +949,9 @@ if run_edit_distance:
     tf.reset_default_graph()
 
     entity_family_mapping = run_edit_distance_graph(total_entity_dict, proteins_dict)
-    save_to_pickle(entity_family_mapping, 'total_ed_protein_classes')
+
+    with open(trained_distance_directory, 'wb') as pickle_file:
+        pickle.dump(entity_family_mapping, pickle_file)
 
 # LSTM
 training_dataset_size = len(training_instances)
