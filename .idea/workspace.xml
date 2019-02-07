@@ -2,10 +2,7 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="d3ee277d-9e92-411e-920b-dc099ec7a1fd" name="Default Changelist" comment="">
-      <change afterPath="$PROJECT_DIR$/config.ini" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/biLSTM.py" beforeDir="false" afterPath="$PROJECT_DIR$/biLSTM.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/biocreative.py" beforeDir="false" afterPath="$PROJECT_DIR$/biocreative.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
     </list>
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
     <option name="SHOW_DIALOG" value="false" />
