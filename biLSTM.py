@@ -824,7 +824,7 @@ def run_edit_distance_graph(abstract_entities_dict, protein_family_dict):
     return result
 
 
-def run_model(session, num_step, data_input, data_output, mapping_dict, train):
+def run_model(session, num_step, data_input, data_output, mapping_dict, run_mode):
 
     # create a confusion matrix to store evaluation for each epoch
     confusion_matrix = np.zeros(shape=(NUM_CLASS, NUM_CLASS))
@@ -836,6 +836,12 @@ def run_model(session, num_step, data_input, data_output, mapping_dict, train):
     bar.start()
 
     data_offset = 0
+
+    if run_mode == 'test':
+        instances_info = []
+        instances_predictions = []
+        instances_true_labels = []
+
     for step in range(num_step):
 
         # fetch and prepare batch data
@@ -843,6 +849,11 @@ def run_model(session, num_step, data_input, data_output, mapping_dict, train):
                                                                   data_offset,
                                                                   data_input,
                                                                   data_output)
+        if run_mode == 'test':
+            for instance in batch_dataset:
+                instances_info.append(instance)
+            for label in batch_labels:
+                instances_true_labels.append(label)
 
         prepared_inputs = convert_input(data=batch_dataset,
                                         word_mapping=mapping_dict['word'],
@@ -863,7 +874,7 @@ def run_model(session, num_step, data_input, data_output, mapping_dict, train):
         batch_labels = convert_labels(batch_labels, NUM_CLASS)
 
         if len(batch_dataset) == BATCH_SIZE:
-            if train:
+            if run_mode == 'train':
                 _, predicted_values = session.run([train_op, label_prediction],
                                                   feed_dict={word_ids_placeholder: batch_word_dataset,
                                                              pos_ids_placeholder: batch_pos_dataset,
@@ -873,7 +884,8 @@ def run_model(session, num_step, data_input, data_output, mapping_dict, train):
                                                              prob_placeholder: 0.5,
                                                              Y: batch_labels,
                                                              sentence_length_placeholder: batch_sentence_length})
-            else:
+
+            elif run_mode == 'development':
                 predicted_values = session.run(label_prediction,
                                                feed_dict={word_ids_placeholder: batch_word_dataset,
                                                           pos_ids_placeholder: batch_pos_dataset,
@@ -882,6 +894,19 @@ def run_model(session, num_step, data_input, data_output, mapping_dict, train):
                                                           arg2_position_ids_placeholder: batch_arg2_dist,
                                                           prob_placeholder: 1.0,
                                                           sentence_length_placeholder: batch_sentence_length})
+
+            elif run_mode == 'test':
+                predicted_values = session.run(label_prediction,
+                                               feed_dict={word_ids_placeholder: batch_word_dataset,
+                                                          pos_ids_placeholder: batch_pos_dataset,
+                                                          iob_ids_placeholder: batch_iob_dataset,
+                                                          arg1_position_ids_placeholder: batch_arg1_dist,
+                                                          arg2_position_ids_placeholder: batch_arg2_dist,
+                                                          prob_placeholder: 1.0,
+                                                          sentence_length_placeholder: batch_sentence_length})
+
+                for prediction in predicted_values:
+                    instances_predictions.append(prediction)
 
             confusion_matrix = update_confusion_matrix(confusion=confusion_matrix,
                                                        true=batch_labels,
@@ -892,7 +917,10 @@ def run_model(session, num_step, data_input, data_output, mapping_dict, train):
 
     bar.finish()
 
-    return confusion_matrix
+    if run_mode == 'test':
+        return confusion_matrix, instances_info, instances_true_labels, instances_predictions
+    else:
+        return confusion_matrix
 
 
 biocreative = bc.BioCreativeData(TRA_ABSTRACT_LOCATION, TRA_ENTITIES_LOCATION, TRA_RELATION_LOCATION,
@@ -1104,7 +1132,7 @@ with tf.Session() as sess:
                                            data_input=training_instances,
                                            data_output=training_labels,
                                            mapping_dict=mappings,
-                                           train=True)
+                                           run_mode='train')
         print_confusion_matrix(epoch_confusion_matrix)
         training_evaluation = calculate_f_measure(epoch_confusion_matrix)
         training_f_measure = training_evaluation[2]
@@ -1115,7 +1143,7 @@ with tf.Session() as sess:
                                            data_input=development_instances,
                                            data_output=development_labels,
                                            mapping_dict=mappings,
-                                           train=False)
+                                           run_mode='development')
         development_evaluation = calculate_f_measure(epoch_confusion_matrix)
         development_f_measure = development_evaluation[2]
         summary.value.add(tag='development_f_measure', simple_value=development_f_measure)
@@ -1126,12 +1154,12 @@ with tf.Session() as sess:
     summary_writer.flush()
 
     # run test dataset on trained bi-lstm
-    test_confusion_matrix = run_model(session=sess,
-                                      num_step=test_num_step,
-                                      data_input=test_instances,
-                                      data_output=test_labels,
-                                      mapping_dict=mappings,
-                                      train=True)
+    test_confusion_matrix, instances, true_labels, predicted_values = run_model(session=sess,
+                                                                                num_step=test_num_step,
+                                                                                data_input=test_instances,
+                                                                                data_output=test_labels,
+                                                                                mapping_dict=mappings,
+                                                                                run_mode='test')
     print_confusion_matrix(test_confusion_matrix)
 
     # saving embedding tensor for projection
@@ -1145,3 +1173,15 @@ with tf.Session() as sess:
     with open('tensorboard/embedding_labels.tsv', 'w') as f:
         for label in embedding_labels:
             f.write("%s\n" % label)
+
+    # write predictions
+    with open('predicted_data.tsv', 'w') as f:
+        for idx in range(len(instances)):
+            instance = instances[idx]
+            true_label = true_labels[idx]
+            predicted_value = predicted_values[idx]
+
+            f.write("{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n".format(instance[0], instance[1], instance[2],
+                                                                      instance[3], instance[4], instance[5],
+                                                                      instance[6], instance[7], true_label,
+                                                                      predicted_value))
