@@ -12,8 +12,8 @@ import configparser
 METHOD = 'BASELINE'
 # METHOD = 'EDITDISTANCE'
 
-CELL = 'LSTM'
-# CELL = 'GRU'
+# CELL = 'LSTM'
+CELL = 'GRU'
 
 TYPE = 'BINARY'
 # TYPE = 'MULTICLASS'
@@ -61,7 +61,7 @@ def save_to_pickle(data, file_name):
     :return: None
     """
 
-    directory = "relation_extraction_pickle/" + file_name + ".pickle"
+    directory = "dataset/relation_extraction_pickle/" + file_name + ".pickle"
     with open(directory, 'wb') as pickle_file:
         pickle.dump(data, pickle_file)
 
@@ -74,7 +74,7 @@ def load_from_pickle(file_name):
     data: python data to be loaded
     """
 
-    directory = "relation_extraction_pickle/" + file_name + ".pickle"
+    directory = "dataset/relation_extraction_pickle/" + file_name + ".pickle"
     with open(directory, 'rb') as pickle_file:
         data = pickle.load(pickle_file)
     return data
@@ -87,7 +87,7 @@ def check_file(file_name):
     :return: boolean if file exists
     """
 
-    directory = "relation_extraction_pickle/" + file_name + ".pickle"
+    directory = "dataset/relation_extraction_pickle/" + file_name + ".pickle"
     return os.path.isfile(directory)
 
 
@@ -99,7 +99,7 @@ def create_position_embed_map(max_value):
     """
 
     res_mapping = {0: 0}
-    for index in range(max_value):
+    for index in range(max_value+1):
         current_available_id = len(res_mapping)
         res_mapping[index] = current_available_id
         current_available_id = current_available_id + 1
@@ -623,24 +623,41 @@ def model(x, seq_len_list, max_seq_len):
 
     # convert input to time_step x batch_size x embedding_size
     x = tf.unstack(x, max_seq_len, 1)
+    if CELL_TYPE == 'LSTM':
+        lstm_fw_cell = rnn.LSTMBlockCell(num_units=NUM_HIDDEN)
+        lstm_fw_cell_dropout = rnn.DropoutWrapper(cell=lstm_fw_cell,
+                                                  input_keep_prob=prob_placeholder,
+                                                  output_keep_prob=prob_placeholder,
+                                                  state_keep_prob=prob_placeholder)
 
-    lstm_fw_cell = rnn.LSTMBlockCell(num_units=NUM_HIDDEN)
-    lstm_fw_cell_dropout = rnn.DropoutWrapper(cell=lstm_fw_cell,
-                                              input_keep_prob=prob_placeholder,
-                                              output_keep_prob=prob_placeholder,
-                                              state_keep_prob=prob_placeholder)
+        lstm_bw_cell = rnn.LSTMBlockCell(num_units=NUM_HIDDEN)
+        lstm_bw_cell_dropout = rnn.DropoutWrapper(cell=lstm_bw_cell,
+                                                  input_keep_prob=prob_placeholder,
+                                                  output_keep_prob=prob_placeholder,
+                                                  state_keep_prob=prob_placeholder)
 
-    lstm_bw_cell = rnn.LSTMBlockCell(num_units=NUM_HIDDEN)
-    lstm_bw_cell_dropout = rnn.DropoutWrapper(cell=lstm_bw_cell,
-                                              input_keep_prob=prob_placeholder,
-                                              output_keep_prob=prob_placeholder,
-                                              state_keep_prob=prob_placeholder)
+        rnn_output, _, _ = rnn.static_bidirectional_rnn(lstm_fw_cell_dropout, lstm_bw_cell_dropout, x,
+                                                        sequence_length=seq_len_list,
+                                                        dtype=tf.float32)
 
-    lstm_output, _, _ = rnn.static_bidirectional_rnn(lstm_fw_cell_dropout, lstm_bw_cell_dropout, x,
-                                                     sequence_length=seq_len_list,
-                                                     dtype=tf.float32)
+    elif CELL_TYPE == 'GRU':
+        gru_fw_cell = rnn.GRUBlockCell(num_units=NUM_HIDDEN)
+        gru_fw_cell_dropout = rnn.DropoutWrapper(cell=gru_fw_cell,
+                                                 input_keep_prob=prob_placeholder,
+                                                 output_keep_prob=prob_placeholder,
+                                                 state_keep_prob=prob_placeholder)
 
-    return lstm_output
+        gru_bw_cell = rnn.GRUBlockCell(num_units=NUM_HIDDEN)
+        gru_bw_cell_dropout = rnn.DropoutWrapper(cell=gru_bw_cell,
+                                                 input_keep_prob=prob_placeholder,
+                                                 output_keep_prob=prob_placeholder,
+                                                 state_keep_prob=prob_placeholder)
+
+        rnn_output, _, _ = rnn.static_bidirectional_rnn(gru_fw_cell_dropout, gru_bw_cell_dropout, x,
+                                                        sequence_length=seq_len_list,
+                                                        dtype=tf.float32)
+
+    return rnn_output
 
 
 def lstm_max_pooling(lstm_output, seq_length_list):
@@ -911,7 +928,7 @@ mappings = {
 
 # Edit Distance
 # the name of pre-calculated edit distance file is 'total_ed_protein_classes'
-trained_distance_directory = "pre_trained_edit_distance/total_protein_dataset.pickle"
+trained_distance_directory = "dataset/pre_trained_edit_distance/total_protein_dataset.pickle"
 if os.path.isfile(trained_distance_directory):
     with open(trained_distance_directory, 'rb') as pickle_file:
         entity_family_mapping = pickle.load(pickle_file)
@@ -1124,7 +1141,7 @@ with tf.Session() as sess:
     for i in range(len(inv_map)):
         label = inv_map[i]
         embedding_labels.append(label)
-    np.savetxt("embeddings.tsv", word_embedding_matrix, delimiter="\t")
-    with open('embedding_labels.tsv', 'w') as f:
+    np.savetxt("tensorboard/embeddings.tsv", word_embedding_matrix, delimiter="\t")
+    with open('tensorboard/embedding_labels.tsv', 'w') as f:
         for label in embedding_labels:
             f.write("%s\n" % label)
