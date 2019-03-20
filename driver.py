@@ -1,3 +1,6 @@
+import sys
+sys.path.append('/home/atakanyuksel/genia-tagger-py-master')
+
 import tensorflow as tf
 from tensorflow.contrib import rnn
 import numpy as np
@@ -6,21 +9,28 @@ import math
 import pickle
 import os
 import progressbar
-import biocreative as bc
+import bc_dataset as bc
 import configparser
 
 METHOD = 'BASELINE'
 # METHOD = 'EDITDISTANCE'
 
-# CELL = 'LSTM'
-CELL = 'GRU'
+EMBEDDING_STYLE = 'BASIC'
+# EMBEDDING_STYLE = 'COMPLEX'
+
+CELL = 'LSTM'
+# CELL = 'GRU'
 
 TYPE = 'BINARY'
 # TYPE = 'MULTICLASS'
 
+# NLP = 'GENIA'
+NLP = 'NLTK'
+
 # tensorflow error logging
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
+# reading config file
 config = configparser.ConfigParser()
 config.read('config.ini')
 
@@ -183,62 +193,32 @@ def get_test_dataset(biocreative_dataset):
     return result
 
 
-def baseline_update_embeddings(word_id_mapping, embedding_list, embedding_dim):
+def get_embeddings():
     """
-    Update the word embedding list with respect to baseline method.
-    Add zero vector to embedding list
-    Add 'CHEMICAL' and 'PROTEIN' to the embedding dictionary
-    :param word_id_mapping: (dictionary) mapping of word to unique id
-    :param embedding_list: list of embedding numpy
-    :param embedding_dim: selected embedding dimension
+    check if embeddings are also prepared.
+    if they are already processed then load the file
+    else prepare embeddings from scratch
     :return:
-    word_id_mapping: updated mapping of word to unique id
-    embedding_list: updated list of embedding numpy
+    res_embedding: numpy embedding matrix (vocab_size x embedding_size)
+    res_word_idx_mapping: mapping of words to unique ids
     """
 
-    for i in range(2):
-        word_embedding = np.zeros(embedding_dim)
-        embedding_list.append(word_embedding)
-        if i == 0:
-            token_name = "CHEMICAL"
-        else:
-            token_name = "PROTEIN"
-        word_id_mapping[token_name] = len(word_id_mapping)
-    return word_id_mapping, embedding_list
-
-
-def edit_distance_update_embeddings(word_id_mapping, embedding_list, embedding_dim):
-    """
-    Update the word embedding list with respect to edit distance method.
-    Add zero vector to embedding list
-    Add 'CHEMICAL' and token for each protein class. For example; "PROTEIN1"
-    :param word_id_mapping: (dictionary) mapping of word to unique id
-    :param embedding_list: list of embedding numpy
-    :param embedding_dim: selected embedding dimension
-    :return:
-    word_id_mapping: updated mapping of word to unique id
-    embedding_list: updated list of embedding numpy
-    """
-
-    word_embedding = np.zeros(embedding_dim)
-    embedding_list.append(word_embedding)
-    token_name = "CHEMICAL"
-    word_id_mapping[token_name] = len(word_id_mapping)
-    for i in range(ED_NUM_CLASS):
-        word_embedding = np.zeros(embedding_dim)
-        embedding_list.append(word_embedding)
-        token_name = "PROTEIN" + str(i)
-        word_id_mapping[token_name] = len(word_id_mapping)
-    return word_id_mapping, embedding_list
+    if check_file('embedding'):
+        res_embedding = load_from_pickle('embedding')
+        res_word_idx_mapping = load_from_pickle('word_idx_mapping')
+    else:
+        res_embedding, res_word_idx_mapping = create_embedding_matrix(PRE_TRAINED_GLOVE_LOCATION)
+        save_to_pickle(res_embedding, 'embedding')
+        save_to_pickle(res_word_idx_mapping, 'word_idx_mapping')
+    return res_embedding, res_word_idx_mapping
 
 
 def create_embedding_matrix(file_location):
     """
     Takes pre defined word embeddings file location and creates embeddings matrix
     :param file_location: GLOVE file location
-    :return:
-    res_embedding_list: numpy array (vocab_size x embedding_size)
-    res_word_id_mapping: mapping words to unique ids
+    :return res_embedding_list: numpy array (vocab_size x embedding_size)
+    :return res_word_id_mapping: mapping words to unique ids
     """
 
     res_word_id_mapping = {}
@@ -286,24 +266,53 @@ def create_embedding_matrix(file_location):
     return res_embedding_list, res_word_id_mapping
 
 
-def get_embeddings():
+def baseline_update_embeddings(word_id_mapping, embedding_list, embedding_dim):
     """
-    check if embeddings are also prepared.
-    if they are already processed then load the file
-    else prepare embeddings from scratch
+    Update the word embedding list with respect to baseline method.
+    Add zero vector to embedding list
+    Add 'CHEMICAL' and 'PROTEIN' to the embedding dictionary
+    :param word_id_mapping: (dictionary) mapping of word to unique id
+    :param embedding_list: list of embedding numpy
+    :param embedding_dim: selected embedding dimension
     :return:
-    res_embedding: numpy embedding matrix (vocab_size x embedding_size)
-    res_word_idx_mapping: mapping of words to unique ids
+    word_id_mapping: updated mapping of word to unique id
+    embedding_list: updated list of embedding numpy
     """
 
-    if check_file('embedding'):
-        res_embedding = load_from_pickle('embedding')
-        res_word_idx_mapping = load_from_pickle('word_idx_mapping')
-    else:
-        res_embedding, res_word_idx_mapping = create_embedding_matrix(PRE_TRAINED_GLOVE_LOCATION)
-        save_to_pickle(res_embedding, 'embedding')
-        save_to_pickle(res_word_idx_mapping, 'word_idx_mapping')
-    return res_embedding, res_word_idx_mapping
+    for i in range(2):
+        word_embedding = np.zeros(embedding_dim)
+        embedding_list.append(word_embedding)
+        if i == 0:
+            token_name = "CHEMICAL"
+        else:
+            token_name = "PROTEIN"
+        word_id_mapping[token_name] = len(word_id_mapping)
+    return word_id_mapping, embedding_list
+
+
+def edit_distance_update_embeddings(word_id_mapping, embedding_list, embedding_dim):
+    """
+    Update the word embedding list with respect to edit distance method.
+    Add zero vector to embedding list
+    Add 'CHEMICAL' and token for each protein class. For example; "PROTEIN1"
+    :param word_id_mapping: (dictionary) mapping of word to unique id
+    :param embedding_list: list of embedding numpy
+    :param embedding_dim: selected embedding dimension
+    :return:
+    word_id_mapping: updated mapping of word to unique id
+    embedding_list: updated list of embedding numpy
+    """
+
+    word_embedding = np.zeros(embedding_dim)
+    embedding_list.append(word_embedding)
+    token_name = "CHEMICAL"
+    word_id_mapping[token_name] = len(word_id_mapping)
+    for i in range(ED_NUM_CLASS):
+        word_embedding = np.zeros(embedding_dim)
+        embedding_list.append(word_embedding)
+        token_name = "PROTEIN" + str(i)
+        word_id_mapping[token_name] = len(word_id_mapping)
+    return word_id_mapping, embedding_list
 
 
 def create_protein_dictionary(name_list, label_list):
@@ -393,72 +402,6 @@ def get_batch_data(batch_size, index, data, label_data=None):
         return batch_input, index
 
 
-def replace_tokens(instance, protein_family_mapping):
-    """
-    get sentence and replace arguments with selected tokens
-    obtain argument indexes
-    :param instance: dataset instance
-    :param protein_family_mapping: mapping of protein names to protein family classes
-    :return tokens: tokenized list of instance
-    :return argument_idx: return indexes of the arguments in tokens list
-    """
-
-    sentence = instance[1]
-
-    arg1_text = instance[3]
-    arg1_type = instance[4]
-
-    arg2_text = instance[6]
-    arg2_type = instance[7]
-
-    replaced_words = []
-
-    # replace arg1
-    if arg1_type == 'CHEMICAL':
-        sentence = sentence.replace(arg1_text, 'CHEMICAL')
-        replaced_words.append('CHEMICAL')
-    else:
-        if METHOD == 'EDITDISTANCE':
-            selected_protein_token = protein_family_mapping[arg1_text]
-            sentence = sentence.replace(arg1_text, selected_protein_token)
-            replaced_words.append(selected_protein_token)
-        elif METHOD == 'BASELINE':
-            sentence = sentence.replace(arg1_text, 'PROTEIN')
-            replaced_words.append('PROTEIN')
-
-    # replace arg2
-    if arg2_type == 'CHEMICAL':
-        sentence = sentence.replace(arg2_text, 'CHEMICAL')
-        replaced_words.append('CHEMICAL')
-    else:
-        if METHOD == 'EDITDISTANCE':
-            selected_protein_token = protein_family_mapping[arg2_text]
-            sentence = sentence.replace(arg2_text, selected_protein_token)
-            replaced_words.append(selected_protein_token)
-        elif METHOD == 'BASELINE':
-            sentence = sentence.replace(arg2_text, 'PROTEIN')
-            replaced_words.append('PROTEIN')
-
-    # check and fix tokens
-    argument_idx = []
-    tokens = nltk.word_tokenize(sentence)
-    for index in range(len(tokens)):
-        token = tokens[index]
-        for new_word in replaced_words:
-            if new_word in token:
-                tokens[index] = new_word
-                argument_idx.append(index)
-
-    argument_idx = argument_idx[:2]
-    # assert len(argument_idx) == 2, tokens
-
-    if len(argument_idx) == 1:
-        argument_idx.append(np.random.randint(len(tokens)))
-    if len(argument_idx) == 0:
-        argument_idx.append(np.random.randint(len(tokens)))
-        argument_idx.append(np.random.randint(len(tokens)))
-
-    return tokens, argument_idx
 
 
 def convert_input(data, word_mapping, pos_mapping, iob_mapping, distance_mapping, max_sent_len, prot_label_dict):
@@ -520,8 +463,15 @@ def convert_input(data, word_mapping, pos_mapping, iob_mapping, distance_mapping
                 else:
                     iob_id = iob_mapping['unk']
 
-                distance_arg1_id = distance_mapping[distance_to_arg1]
-                distance_arg2_id = distance_mapping[distance_to_arg2]
+                if distance_to_arg1 in distance_mapping:
+                    distance_arg1_id = distance_mapping[distance_to_arg1]
+                else:
+                    distance_arg1_id = distance_mapping[max_sent_len]
+
+                if distance_to_arg2 in distance_mapping:
+                    distance_arg2_id = distance_mapping[distance_to_arg2]
+                else:
+                    distance_arg2_id = distance_mapping[max_sent_len]
 
                 instance_word_ids[idx] = int(token_id)
                 instance_pos_tags[idx] = int(pos_id)
@@ -529,12 +479,12 @@ def convert_input(data, word_mapping, pos_mapping, iob_mapping, distance_mapping
                 instance_arg1_distance[idx] = int(distance_arg1_id)
                 instance_arg2_distance[idx] = int(distance_arg2_id)
 
-        result_word_idx.append(instance_word_ids)
-        result_pos_idx.append(instance_pos_tags)
-        result_iob_idx.append(instance_iob_tags)
-        result_arg1_distance_idx.append(instance_arg1_distance)
-        result_arg2_distance_idx.append(instance_arg2_distance)
-        result_sentence_length.append(len(iob_tags))
+                result_word_idx.append(instance_word_ids)
+                result_pos_idx.append(instance_pos_tags)
+                result_iob_idx.append(instance_iob_tags)
+                result_arg1_distance_idx.append(instance_arg1_distance)
+                result_arg2_distance_idx.append(instance_arg2_distance)
+                result_sentence_length.append(len(iob_tags))
 
     result_word_idx = np.vstack(result_word_idx)
     result_pos_idx = np.vstack(result_pos_idx)
@@ -547,6 +497,73 @@ def convert_input(data, word_mapping, pos_mapping, iob_mapping, distance_mapping
                   result_arg2_distance_idx, result_sentence_length]
 
     return result_arr
+
+
+def replace_tokens(instance, protein_family_mapping):
+    """
+    get sentence and replace arguments with selected tokens
+    obtain argument indexes
+    :param instance: dataset instance
+    :param protein_family_mapping: mapping of protein names to protein family classes
+    :return tokens: tokenized list of instance
+    :return argument_idx: return indexes of the arguments in tokens list
+    """
+
+    sentence = instance[1]
+
+    arg1_text = instance[3]
+    arg1_type = instance[4]
+
+    arg2_text = instance[6]
+    arg2_type = instance[7]
+
+    replaced_words = []
+
+    # replace arg1
+    if arg1_type == 'CHEMICAL':
+        sentence = sentence.replace(arg1_text, 'CHEMICAL')
+        replaced_words.append('CHEMICAL')
+    else:
+        if METHOD == 'EDITDISTANCE':
+            selected_protein_token = protein_family_mapping[arg1_text]
+            sentence = sentence.replace(arg1_text, selected_protein_token)
+            replaced_words.append(selected_protein_token)
+        elif METHOD == 'BASELINE':
+            sentence = sentence.replace(arg1_text, 'PROTEIN')
+            replaced_words.append('PROTEIN')
+
+    # replace arg2
+    if arg2_type == 'CHEMICAL':
+        sentence = sentence.replace(arg2_text, 'CHEMICAL')
+        replaced_words.append('CHEMICAL')
+    else:
+        if METHOD == 'EDITDISTANCE':
+            selected_protein_token = protein_family_mapping[arg2_text]
+            sentence = sentence.replace(arg2_text, selected_protein_token)
+            replaced_words.append(selected_protein_token)
+        elif METHOD == 'BASELINE':
+            sentence = sentence.replace(arg2_text, 'PROTEIN')
+            replaced_words.append('PROTEIN')
+
+    # check and fix tokens
+    argument_idx = []
+    tokens = nltk.word_tokenize(sentence.lower())
+    for index in range(len(tokens)):
+        token = tokens[index]
+        for new_word in replaced_words:
+            if new_word in token:
+                tokens[index] = new_word
+                argument_idx.append(index)
+
+    argument_idx = argument_idx[:2]
+
+    if len(argument_idx) == 1:
+        argument_idx.append(np.random.randint(len(tokens)))
+    if len(argument_idx) == 0:
+        argument_idx.append(np.random.randint(len(tokens)))
+        argument_idx.append(np.random.randint(len(tokens)))
+
+    return tokens, argument_idx
 
 
 def convert_labels(data, size):
@@ -590,7 +607,7 @@ def convert_labels(data, size):
     return result
 
 
-def fetch_embeddings(word_ids, pos_ids, iob_ids, distance_arg1_ids, distance_arg2_ids, embeddings_variable):
+def fetch_embeddings(word_ids, pos_ids, iob_ids, distance_arg1_ids, distance_arg2_ids, embeddings_variable, mode):
     """
     fetch embeddings of the ids. create a embedding matrix
     :param word_ids: list of word ids
@@ -599,18 +616,22 @@ def fetch_embeddings(word_ids, pos_ids, iob_ids, distance_arg1_ids, distance_arg
     :param distance_arg1_ids: list of distance embedding ids wrt arg1
     :param distance_arg2_ids: list of distance embedding ids wrt arg2
     :param embeddings_variable: tensorflow variable that stores embeddings
+    :param mode: represent whether to use complex representation or basic
     :return sentence_image: concatenated matrix of embeddings
     """
+    if mode == 'complex':
+        sentence_word_image = tf.nn.embedding_lookup(embeddings_variable['word'], word_ids)
+        sentence_pos_image = tf.nn.embedding_lookup(embeddings_variable['pos'], pos_ids)
+        sentence_iob_image = tf.nn.embedding_lookup(embeddings_variable['iob'], iob_ids)
+        sentence_distance_arg1_image = tf.nn.embedding_lookup(embeddings_variable['arg1_distance'], distance_arg1_ids)
+        sentence_distance_arg2_image = tf.nn.embedding_lookup(embeddings_variable['arg2_distance'], distance_arg2_ids)
 
-    sentence_word_image = tf.nn.embedding_lookup(embeddings_variable['word'], word_ids)
-    sentence_pos_image = tf.nn.embedding_lookup(embeddings_variable['pos'], pos_ids)
-    sentence_iob_image = tf.nn.embedding_lookup(embeddings_variable['iob'], iob_ids)
-    sentence_distance_arg1_image = tf.nn.embedding_lookup(embeddings_variable['arg1_distance'], distance_arg1_ids)
-    sentence_distance_arg2_image = tf.nn.embedding_lookup(embeddings_variable['arg2_distance'], distance_arg2_ids)
-
-    sentence_image = tf.concat(axis=2, values=[sentence_word_image, sentence_pos_image, sentence_iob_image,
-                                               sentence_distance_arg1_image, sentence_distance_arg2_image])
-    return sentence_image
+        sentence_image = tf.concat(axis=2, values=[sentence_word_image, sentence_pos_image, sentence_iob_image,
+                                                   sentence_distance_arg1_image, sentence_distance_arg2_image])
+        return sentence_image
+    else:
+        sentence_word_image = tf.nn.embedding_lookup(embeddings_variable['word'], word_ids)
+        return sentence_word_image
 
 
 def model(x, seq_len_list, max_seq_len):
@@ -618,6 +639,7 @@ def model(x, seq_len_list, max_seq_len):
     model of bidirectional lstm with dropout wrapper
     :param x: input (batch_size x time_step x embedding_size)
     :param seq_len_list: list of sentence lengths
+    :param max_seq_len: length of the longest sentence
     :return lstm_output: output of the model (time_step x batch_size x num_hidden)
     """
 
@@ -923,9 +945,15 @@ def run_model(session, num_step, data_input, data_output, mapping_dict, run_mode
         return confusion_matrix
 
 
-biocreative = bc.BioCreativeData(TRA_ABSTRACT_LOCATION, TRA_ENTITIES_LOCATION, TRA_RELATION_LOCATION,
-                                 DEV_ABSTRACT_LOCATION, DEV_ENTITIES_LOCATION, DEV_RELATION_LOCATION,
-                                 TEST_ABSTRACT_LOCATION, TEST_ENTITIES_LOCATION, TEST_RELATION_LOCATION)
+biocreative = bc.BioCreativeData(training_abstract_loc=TRA_ABSTRACT_LOCATION,
+                                 training_entities_loc=TRA_ENTITIES_LOCATION,
+                                 training_relations_loc=TRA_RELATION_LOCATION,
+                                 dev_abstract_loc=DEV_ABSTRACT_LOCATION,
+                                 dev_entities_loc=DEV_ENTITIES_LOCATION,
+                                 dev_relations_loc=DEV_RELATION_LOCATION,
+                                 test_abstract_loc=TEST_ABSTRACT_LOCATION,
+                                 test_entities_loc=TEST_ENTITIES_LOCATION,
+                                 test_relations_loc=TEST_RELATION_LOCATION)
 
 training_data = get_training_dataset(biocreative)
 training_instances = training_data[0]
@@ -1081,8 +1109,14 @@ elif MODE == 'BINARY':
     class_weights = tf.constant([[1.54, 3]])
 
 # fetch the embeddings of ids
-batch_sentence_image = fetch_embeddings(word_ids_placeholder, pos_ids_placeholder, iob_ids_placeholder,
-                                        arg1_position_ids_placeholder, arg2_position_ids_placeholder, embeddings)
+if EMBEDDING_STYLE == 'BASIC':
+    batch_sentence_image = fetch_embeddings(word_ids_placeholder, pos_ids_placeholder, iob_ids_placeholder,
+                                            arg1_position_ids_placeholder, arg2_position_ids_placeholder, embeddings,
+                                            mode='basic')
+else:
+    batch_sentence_image = fetch_embeddings(word_ids_placeholder, pos_ids_placeholder, iob_ids_placeholder,
+                                            arg1_position_ids_placeholder, arg2_position_ids_placeholder, embeddings,
+                                            mode='complex')
 
 # run through the model
 outputs = model(batch_sentence_image, sentence_length_placeholder, max_time_step)
