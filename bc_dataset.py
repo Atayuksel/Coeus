@@ -7,12 +7,13 @@ from itertools import combinations
 
 class BioCreativeData(object):
 
-    def __init__(self, input_root, output_root, tokenizer, output_style):
+    def __init__(self, input_root, output_root, tokenizer, output_style, binary_label):
         self.input_root = input_root
         self.output_root = output_root
         self.tokenizer = tokenizer  # 'NLTK' or 'GENIA'
         self.output_style = output_style  # 'FULL' or 'CANDIDATE'
-        self.dataset = []
+        self.binary_label = binary_label # True or False
+        self.dataset = [None] * 6
 
         # Check for previously created dataset.
         dataset_info_dir = os.path.join(output_root, 'dataset_info.txt')
