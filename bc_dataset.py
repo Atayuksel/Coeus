@@ -23,8 +23,12 @@ class BioCreativeData(object):
 
         if dataset_created:
             self.dataset[0], self.dataset[1] = self.load_dataset(dataset='TRAINING')
+            self.dataset[2], self.dataset[3] = self.load_dataset(dataset='DEV')
+            self.dataset[4], self.dataset[5] = self.load_dataset(dataset='TEST')
         else:
             self.dataset[0], self.dataset[1] = self.prepare_dataset(dataset='TRAINING')
+            self.dataset[2], self.dataset[3] = self.prepare_dataset(dataset='DEV')
+            self.dataset[4], self.dataset[5] = self.prepare_dataset(dataset='TEST')
 
     def load_dataset(self, dataset):
         """
