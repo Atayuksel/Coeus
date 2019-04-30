@@ -7,11 +7,10 @@ from itertools import combinations
 
 class BioCreativeData(object):
 
-    def __init__(self, input_root, output_root, tokenizer, output_style, binary_label):
+    def __init__(self, input_root, output_root, sent_tokenizer, binary_label):
         self.input_root = input_root
         self.output_root = output_root
-        self.tokenizer = tokenizer  # 'NLTK' or 'GENIA'
-        self.output_style = output_style  # 'FULL' or 'CANDIDATE'
+        self.tokenizer = sent_tokenizer  # 'NLTK' or 'GENIA'
         self.binary_label = binary_label # True or False
         self.dataset = [None] * 6
 
@@ -128,11 +127,17 @@ class BioCreativeData(object):
                 for pair in comb:
                     arg1_entity_type = pair[0]['entityType']
                     arg2_entity_type = pair[1]['entityType']
+
                     if (arg1_entity_type == 'CHEMICAL' and arg2_entity_type != 'CHEMICAL') or \
                             (arg1_entity_type != 'CHEMICAL' and arg2_entity_type == 'CHEMICAL'):
+                        sentence_start = sentences_offsets[sentence_id]
+
+                        arg1_start = int(pair[0]['start_idx']) - sentence_start
+                        arg2_start = int(pair[1]['start_idx']) - sentence_start
+
                         instance = [abstract_id, sentence_text,
-                                    pair[0]['entityID'], pair[0]['name'], pair[0]['entityType'],
-                                    pair[1]['entityID'], pair[1]['name'], pair[1]['entityType']]
+                                    pair[0]['entityID'], pair[0]['name'], pair[0]['entityType'], str(arg1_start),
+                                    pair[1]['entityID'], pair[1]['name'], pair[1]['entityType'], str(arg2_start)]
                         data.append(instance)
 
                         relations_in_abstracts = []
