@@ -146,7 +146,7 @@ class BioCreativeData(object):
 
                         label = self.check_instance_relation(relations_in_abstracts,
                                                              instance[2],
-                                                             instance[5])
+                                                             instance[6])
                         label = int(label)
                         labels.append(label)
 

@@ -1,10 +1,15 @@
 import bc_dataset
-
+import numpy as np
 
 class DataInterface(object):
 
-    def __init__(self, dataset_name):
+    def __init__(self, dataset_name, embedding_dir):
+        self.embedding_dir = embedding_dir
         self.dataset_name = dataset_name
+
+        self.batch_size = 10
+        self.cur_index = 0
+
         self.dataset = {'training': {'data': [], 'labels': [], 'entities': [], 'abstract_ids': [], 'entity_ids': []},
                         'development': {'data': [], 'labels': [], 'entities': [], 'abstract_ids': [], 'entity_ids': []},
                         'test': {'data': [], 'labels': [], 'entities': [], 'abstract_ids': [], 'entity_ids': []}}
@@ -23,7 +28,36 @@ class DataInterface(object):
                 self.parse_dataset(self.dataset['development'], self.raw_dataset[2], self.raw_dataset[3], False, True)
                 self.parse_dataset(self.dataset['test'], self.raw_dataset[4], self.raw_dataset[5], False, True)
 
-            print('askdjaklsd')
+            self.embeddings, self.word_to_id = self.parse_embedding()
+
+    def parse_embedding(self):
+        embedding_file = open(self.embedding_dir, 'r', encoding='utf-8')
+        lines = embedding_file.readlines()
+        embedding_file.close()
+
+        word_id_mapping = {'unk': 0}
+        vocab_size = len(lines)
+        embedding_dim = len(lines[0][:-1].split(' ')) - 1
+        embeddings = np.zeros(((vocab_size+1), embedding_dim))
+        embeddings[0, :] = np.random.rand(1, embedding_dim)
+
+        for idx in range(len(lines)):
+            line = lines[idx][:-1].split(' ')
+            token = line[0]
+
+            # get embedding and convert it to numpy array
+            word_embedding = line[1:]
+            word_embedding = list(np.float_(word_embedding))
+            word_embedding = np.asarray(word_embedding)
+
+            # add embedding to embeddings
+            embeddings[idx+1, :] = word_embedding
+
+            # assign id to token
+            current_id = len(word_id_mapping)
+            word_id_mapping[token] = current_id
+
+        return embeddings, word_id_mapping
 
     def parse_dataset(self, data_dictionary, data, labels, full_text, binary_relation):
         for i in range(len(data)):
@@ -52,6 +86,14 @@ class DataInterface(object):
             data_dictionary['entities'].append((arg1_text, arg2_text))
             data_dictionary['entity_ids'].append((arg1_id, arg2_id))
             data_dictionary['labels'].append(label)
+
+    def create_batch(self, dataset_type):
+        dataset = self.dataset[dataset_type]
+        for idx in range(self.cur_index, (self.cur_index+self.batch_size)):
+            text_data = dataset['data'][idx]
+            label = dataset['labels'][idx]
+            entities = dataset['entities'][idx]
+            abstract_id = dataset
 
     @staticmethod
     def trim_sentence(sentence, arg1_text, arg1_start, arg2_text, arg2_start):
