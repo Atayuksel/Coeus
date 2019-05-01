@@ -11,7 +11,7 @@ class BioCreativeData(object):
         self.input_root = input_root
         self.output_root = output_root
         self.tokenizer = sent_tokenizer  # 'NLTK' or 'GENIA'
-        self.binary_label = binary_label # True or False
+        self.binary_label = binary_label  # True or False
         self.dataset = [None] * 6
 
         # Check for previously created dataset.

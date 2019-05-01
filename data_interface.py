@@ -1,14 +1,20 @@
 import bc_dataset
+import nltk
 import numpy as np
+
 
 class DataInterface(object):
 
     def __init__(self, dataset_name, embedding_dir):
         self.embedding_dir = embedding_dir
         self.dataset_name = dataset_name
+        self.word_tokenizer = 'NLTK'
+        self.max_seq_length = 0
 
         self.batch_size = 10
         self.cur_index = 0
+
+        self.embedding_dim = 0
 
         self.dataset = {'training': {'data': [], 'labels': [], 'entities': [], 'abstract_ids': [], 'entity_ids': []},
                         'development': {'data': [], 'labels': [], 'entities': [], 'abstract_ids': [], 'entity_ids': []},
@@ -37,9 +43,9 @@ class DataInterface(object):
 
         word_id_mapping = {'unk': 0}
         vocab_size = len(lines)
-        embedding_dim = len(lines[0][:-1].split(' ')) - 1
-        embeddings = np.zeros(((vocab_size+1), embedding_dim))
-        embeddings[0, :] = np.random.rand(1, embedding_dim)
+        self.embedding_dim = len(lines[0][:-1].split(' ')) - 1
+        embeddings = np.zeros(((vocab_size+1), self.embedding_dim))
+        embeddings[0, :] = np.random.rand(1, self.embedding_dim)
 
         for idx in range(len(lines)):
             line = lines[idx][:-1].split(' ')
@@ -61,39 +67,62 @@ class DataInterface(object):
 
     def parse_dataset(self, data_dictionary, data, labels, full_text, binary_relation):
         for i in range(len(data)):
-            instance = data[i]
             label = labels[i]
+
+            instance = data[i]
             instance_id = instance[0]
             instance_text = instance[1]
+
             arg1_id = instance[2]
             arg1_text = instance[3]
             arg1_type = instance[4]
             arg1_start_idx = instance[5]
+
             arg2_id = instance[6]
             arg2_text = instance[7]
             arg2_type = instance[8]
             arg2_start_idx = instance[9]
 
+            # full text sentence or text between entities
             if not full_text:
                 instance_text = self.trim_sentence(instance_text, arg1_text, int(arg1_start_idx),
                                                    arg2_text, int(arg2_start_idx))
 
+            # binary relation or multiclass relation
             if binary_relation and label != 0:
                 label = 1
 
-            data_dictionary['abstract_ids'].append(instance_id)
-            data_dictionary['data'].append(instance_text)
-            data_dictionary['entities'].append((arg1_text, arg2_text))
-            data_dictionary['entity_ids'].append((arg1_id, arg2_id))
-            data_dictionary['labels'].append(label)
+            # check for sentence empty or not
+            if len(instance_text) != 0:
+                tokenized_sent = nltk.word_tokenize(instance_text)
+
+                # get maximum sequence length
+                if self.max_seq_length < len(tokenized_sent):
+                    self.max_seq_length = len(tokenized_sent)
+
+                data_dictionary['abstract_ids'].append(instance_id)
+                data_dictionary['data'].append(tokenized_sent)
+                data_dictionary['entities'].append((arg1_text, arg2_text))
+                data_dictionary['entity_ids'].append((arg1_id, arg2_id))
+                data_dictionary['labels'].append(label)
 
     def create_batch(self, dataset_type):
         dataset = self.dataset[dataset_type]
-        for idx in range(self.cur_index, (self.cur_index+self.batch_size)):
-            text_data = dataset['data'][idx]
-            label = dataset['labels'][idx]
-            entities = dataset['entities'][idx]
-            abstract_id = dataset
+        batch_data = np.zeros((self.batch_size, self.max_seq_length, self.embedding_dim))
+
+        for batch_idx in range(self.cur_index, (self.cur_index+self.batch_size)):
+            tokenized_text = dataset['data'][batch_idx]
+            for token_idx in range(len(tokenized_text)):
+                token = tokenized_text[token_idx]
+                if token in self.word_to_id:
+                    token_id = self.word_to_id[token]
+                else:
+                    token_id = 0
+                token_embedding = self.embeddings[token_id, :]
+                batch_data[batch_idx, token_idx, :] = token_embedding
+            self.cur_index += 1
+
+        return batch_data
 
     @staticmethod
     def trim_sentence(sentence, arg1_text, arg1_start, arg2_text, arg2_start):
