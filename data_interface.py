@@ -9,16 +9,17 @@ class DataInterface(object):
         self.embedding_dir = embedding_dir
         self.dataset_name = dataset_name
         self.word_tokenizer = 'NLTK'
-        self.max_seq_length = 0
 
         self.batch_size = 10
-        self.cur_index = 0
 
         self.embedding_dim = 0
 
-        self.dataset = {'training': {'data': [], 'labels': [], 'entities': [], 'abstract_ids': [], 'entity_ids': []},
-                        'development': {'data': [], 'labels': [], 'entities': [], 'abstract_ids': [], 'entity_ids': []},
-                        'test': {'data': [], 'labels': [], 'entities': [], 'abstract_ids': [], 'entity_ids': []}}
+        self.dataset = {'training': {'data': [], 'labels': [], 'entities': [], 'abstract_ids': [], 'entity_ids': [],
+                                     'seq_lens': [], 'max_seq_len': 0, 'batch_idx': 0},
+                        'development': {'data': [], 'labels': [], 'entities': [], 'abstract_ids': [], 'entity_ids': [],
+                                        'seq_lens': [], 'max_seq_len': 0, 'batch_idx': 0},
+                        'test': {'data': [], 'labels': [], 'entities': [], 'abstract_ids': [], 'entity_ids': [],
+                                 'seq_lens': [], 'max_seq_len': 0, 'batch_idx': 0}}
 
         if dataset_name == 'BioCreative':
             self.bc_dataset = bc_dataset.BioCreativeData(input_root='dataset',
@@ -97,20 +98,34 @@ class DataInterface(object):
                 tokenized_sent = nltk.word_tokenize(instance_text)
 
                 # get maximum sequence length
-                if self.max_seq_length < len(tokenized_sent):
-                    self.max_seq_length = len(tokenized_sent)
+                if data_dictionary['max_seq_len'] < len(tokenized_sent):
+                    data_dictionary['max_seq_len'] = len(tokenized_sent)
 
                 data_dictionary['abstract_ids'].append(instance_id)
                 data_dictionary['data'].append(tokenized_sent)
                 data_dictionary['entities'].append((arg1_text, arg2_text))
                 data_dictionary['entity_ids'].append((arg1_id, arg2_id))
                 data_dictionary['labels'].append(label)
+                data_dictionary['seq_lens'].append(len(tokenized_sent))
 
-    def create_batch(self, dataset_type):
+    def get_labels(self, dataset_type):
         dataset = self.dataset[dataset_type]
-        batch_data = np.zeros((self.batch_size, self.max_seq_length, self.embedding_dim))
+        return dataset['labels']
 
-        for batch_idx in range(self.cur_index, (self.cur_index+self.batch_size)):
+    def get_seq_lens(self, dataset_type):
+        dataset = self.dataset[dataset_type]
+        return dataset['seq_lens']
+
+    def get_batch(self, dataset_type):
+        dataset = self.dataset[dataset_type]
+        batch_idx = dataset['batch_idx']
+        batch_data = np.zeros((self.batch_size, dataset['max_seq_len'], self.embedding_dim))
+
+        if batch_idx == len(dataset['data']):
+            batch_idx = 0
+        batch_end_idx = min([batch_idx+10, len(dataset['data'])])
+
+        for batch_idx in range(batch_idx, batch_end_idx):
             tokenized_text = dataset['data'][batch_idx]
             for token_idx in range(len(tokenized_text)):
                 token = tokenized_text[token_idx]
@@ -119,14 +134,13 @@ class DataInterface(object):
                 else:
                     token_id = 0
                 token_embedding = self.embeddings[token_id, :]
-                batch_data[batch_idx, token_idx, :] = token_embedding
-            self.cur_index += 1
+                batch_data[(batch_idx % self.batch_size), token_idx, :] = token_embedding
 
+        self.dataset[dataset_type]['batch_idx'] = batch_end_idx
         return batch_data
 
     @staticmethod
     def trim_sentence(sentence, arg1_text, arg1_start, arg2_text, arg2_start):
-        arg1_start
         if arg1_start < arg2_start:
             trim_start_idx = arg1_start + len(arg1_text)
             trim_end_idx = arg2_start
