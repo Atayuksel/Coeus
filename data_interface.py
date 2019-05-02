@@ -9,9 +9,7 @@ class DataInterface(object):
         self.embedding_dir = embedding_dir
         self.dataset_name = dataset_name
         self.word_tokenizer = 'NLTK'
-
         self.batch_size = 10
-
         self.embedding_dim = 0
 
         self.dataset = {'training': {'data': [], 'labels': [], 'entities': [], 'abstract_ids': [], 'entity_ids': [],
@@ -108,23 +106,15 @@ class DataInterface(object):
                 data_dictionary['labels'].append(label)
                 data_dictionary['seq_lens'].append(len(tokenized_sent))
 
-    def get_labels(self, dataset_type):
-        dataset = self.dataset[dataset_type]
-        return dataset['labels']
-
-    def get_seq_lens(self, dataset_type):
-        dataset = self.dataset[dataset_type]
-        return dataset['seq_lens']
-
     def get_batch(self, dataset_type):
         dataset = self.dataset[dataset_type]
         batch_idx = dataset['batch_idx']
-        batch_data = np.zeros((self.batch_size, dataset['max_seq_len'], self.embedding_dim))
-
         if batch_idx == len(dataset['data']):
             batch_idx = 0
-        batch_end_idx = min([batch_idx+10, len(dataset['data'])])
+        batch_end_idx = min([batch_idx + 10, len(dataset['data'])])
 
+        # get batch data
+        batch_data = np.zeros((self.batch_size, dataset['max_seq_len']))
         for batch_idx in range(batch_idx, batch_end_idx):
             tokenized_text = dataset['data'][batch_idx]
             for token_idx in range(len(tokenized_text)):
@@ -133,11 +123,17 @@ class DataInterface(object):
                     token_id = self.word_to_id[token]
                 else:
                     token_id = 0
-                token_embedding = self.embeddings[token_id, :]
-                batch_data[(batch_idx % self.batch_size), token_idx, :] = token_embedding
+                batch_data[(batch_idx % self.batch_size), token_idx] = token_id
+
+        # get batch sequence length
+        batch_seq_lens = dataset['seq_lens'][batch_idx:batch_end_idx]
+
+        # get batch one hot labels
+        batch_labels = dataset['labels'][batch_idx:batch_end_idx]
+        batch_labels = self.convert_one_hot(batch_labels)
 
         self.dataset[dataset_type]['batch_idx'] = batch_end_idx
-        return batch_data
+        return batch_data, batch_labels, batch_seq_lens
 
     @staticmethod
     def trim_sentence(sentence, arg1_text, arg1_start, arg2_text, arg2_start):
@@ -177,3 +173,13 @@ class DataInterface(object):
         else:
             return False
         return True
+
+    @staticmethod
+    def convert_one_hot(data):
+        max_value = max(data)
+        result_data = []
+        for label in data:
+            np_label = np.zeros(max_value + 1)
+            np_label[label] = 1
+            result_data.append(np_label)
+        return result_data
