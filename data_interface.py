@@ -108,14 +108,15 @@ class DataInterface(object):
 
     def get_batch(self, dataset_type):
         dataset = self.dataset[dataset_type]
-        batch_idx = dataset['batch_idx']
-        if batch_idx == len(dataset['data']):
-            batch_idx = 0
-        batch_end_idx = min([batch_idx + 10, len(dataset['data'])])
+        if dataset['batch_idx'] == len(dataset['data']):
+            dataset['batch_idx'] = 0
+
+        batch_start_idx = dataset['batch_idx']
+        batch_end_idx = min([batch_start_idx + 10, len(dataset['data'])])
 
         # get batch data
         batch_data = np.zeros((self.batch_size, dataset['max_seq_len']))
-        for batch_idx in range(batch_idx, batch_end_idx):
+        for batch_idx in range(batch_start_idx, batch_end_idx):
             tokenized_text = dataset['data'][batch_idx]
             for token_idx in range(len(tokenized_text)):
                 token = tokenized_text[token_idx]
@@ -126,10 +127,10 @@ class DataInterface(object):
                 batch_data[(batch_idx % self.batch_size), token_idx] = token_id
 
         # get batch sequence length
-        batch_seq_lens = dataset['seq_lens'][batch_idx:batch_end_idx]
+        batch_seq_lens = dataset['seq_lens'][batch_start_idx:batch_end_idx]
 
         # get batch one hot labels
-        batch_labels = dataset['labels'][batch_idx:batch_end_idx]
+        batch_labels = dataset['labels'][batch_start_idx:batch_end_idx]
         batch_labels = self.convert_one_hot(batch_labels)
 
         self.dataset[dataset_type]['batch_idx'] = batch_end_idx
@@ -176,10 +177,9 @@ class DataInterface(object):
 
     @staticmethod
     def convert_one_hot(data):
-        max_value = max(data)
         result_data = []
         for label in data:
-            np_label = np.zeros(max_value + 1)
+            np_label = np.zeros(2)
             np_label[label] = 1
             result_data.append(np_label)
         return result_data

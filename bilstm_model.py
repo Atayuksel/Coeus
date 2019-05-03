@@ -98,4 +98,5 @@ class BiLSTMModel:
     def error(self):
         mistakes = tf.not_equal(
             tf.argmax(self.target, 1), tf.argmax(self.prediction, 1))
-        return tf.reduce_mean(tf.cast(mistakes, tf.float32))
+        # return tf.reduce_mean(tf.cast(mistakes, tf.float32))
+        return tf.cast(mistakes, tf.float32)
