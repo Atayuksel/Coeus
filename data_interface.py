@@ -5,13 +5,13 @@ import numpy as np
 
 class DataInterface(object):
 
-    def __init__(self, dataset_name, embedding_dir):
+    def __init__(self, dataset_name, embedding_dir, batch_size):
         self.embedding_dir = embedding_dir
         self.dataset_name = dataset_name
-        self.word_tokenizer = 'NLTK'
-        self.batch_size = 10
-        self.embedding_dim = 0
+        self.batch_size = batch_size
 
+        self.word_tokenizer = 'NLTK'
+        self.embedding_dim = 0
         self.dataset = {'training': {'data': [], 'labels': [], 'entities': [], 'abstract_ids': [], 'entity_ids': [],
                                      'seq_lens': [], 'max_seq_len': 0, 'batch_idx': 0},
                         'development': {'data': [], 'labels': [], 'entities': [], 'abstract_ids': [], 'entity_ids': [],
@@ -112,7 +112,7 @@ class DataInterface(object):
             dataset['batch_idx'] = 0
 
         batch_start_idx = dataset['batch_idx']
-        batch_end_idx = min([batch_start_idx + 10, len(dataset['data'])])
+        batch_end_idx = min([batch_start_idx + self.batch_size, len(dataset['data'])])
 
         # get batch data
         batch_data = np.zeros((self.batch_size, dataset['max_seq_len']))
@@ -134,7 +134,30 @@ class DataInterface(object):
         batch_labels = self.convert_one_hot(batch_labels)
 
         self.dataset[dataset_type]['batch_idx'] = batch_end_idx
+
+        if dataset_type != "training":
+            batch_data = self.process_data(batch_data)
+            self.process_seq_length(batch_seq_lens)
+
         return batch_data, batch_labels, batch_seq_lens
+
+    def process_data(self, data):
+        training_max_length = self.dataset['training']['max_seq_len']
+        current_max_length = data.shape[1]
+        result_data = np.zeros((self.batch_size, training_max_length))
+
+        if training_max_length >= current_max_length:  # pad dataset
+            result_data[:, :current_max_length] = data
+            return result_data
+        else:  # crop dataset
+            data = data[:, :training_max_length]
+            return data
+
+    def process_seq_length(self, seq_lens):
+        limit_max_length = self.dataset['training']['max_seq_len']
+        for idx in range(len(seq_lens)):
+            if seq_lens[idx] > limit_max_length:
+                seq_lens[idx] = limit_max_length
 
     @staticmethod
     def trim_sentence(sentence, arg1_text, arg1_start, arg2_text, arg2_start):
@@ -157,13 +180,13 @@ class DataInterface(object):
         :return check_flag: True if dataset is valid and False if dataset is invalid.
         """
 
-        if hasattr(dataset, 'dataset'):
-            if len(dataset.dataset) == 6:
+        if hasattr(dataset, 'dataset'):  # biocreative dataset object has a list titled 'dataset'
+            if len(dataset.dataset) == 6:  # 'dataset' list should contain 6 items.
                 for i in range(3):
                     start_idx = i * 2
                     data = dataset.dataset[start_idx]
                     label = dataset.dataset[start_idx+1]
-                    if len(data) == len(label):
+                    if len(data) == len(label):  # data and label should contain same number of instance
                         for j in range(len(data)):
                             if len(data[j]) != 10 or not (isinstance(label[j], int)):
                                 return False
