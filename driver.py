@@ -40,9 +40,9 @@ def calculate_metrics(false_negative, false_positive, positive_labels):
 # network hyper-parameters
 network_type = "BiLSTM"
 batch_size = 10
-num_epoch = 10
+num_epoch = 50
 class_weights = tf.constant([[1., 1.]])
-num_hidden = 1024
+num_hidden = 512
 learning_rate = 0.01
 
 # data
