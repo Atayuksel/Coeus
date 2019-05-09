@@ -38,29 +38,53 @@ def calculate_metrics(false_negative, false_positive, positive_labels):
     return precision, recall, f1_measure
 
 
-# network hyper-parameters
-# network_type = "BiLSTM"
-network_type = "CNN"
-batch_size = 100
-num_epoch = 20
-class_weights = tf.constant([[1., 1.]])
-num_hidden = 2048
-learning_rate = 0.001
+# read parameters from config.ini
+RUN_TYPE = "GRIDSEARCH"
+REPORT_FILE_NAME = "gridsearch_report.txt"
+MODEL = "CNN"
+BATCH_SIZE = 100
+NUM_EPOCH = 20
+NUM_HIDDEN = 2048
+LEARNING_RATE = 0.001
+CLASS_WEIGHTS = tf.constant([[1., 1.]])
+
+# cnn filter weights, read from config.ini
+if MODEL == "CNN":
+    CONV_FILTER_SIZE_HEIGHT = 2
+    CONV_FILTER_SIZE_WIDTH = 10
+    CONV_FILTER_OUT_1 = 32
+    CONV_FILTER_OUT_2 = 64
+    CONV_FILTER_OUT_3 = 128
+    CONV_FILTER_STRIDE_HEIGHT = 1
+    CONV_FILTER_STRIDE_WIDTH = 1
+
+    POOLING_FILTER_SIZE_HEIGHT = 2
+    POOLING_FILTER_SIZE_WIDTH = 2
+
+    CONV_FILTER_SIZE = [CONV_FILTER_SIZE_HEIGHT, CONV_FILTER_SIZE_WIDTH,
+                        CONV_FILTER_SIZE_HEIGHT, CONV_FILTER_SIZE_WIDTH,
+                        CONV_FILTER_SIZE_HEIGHT, CONV_FILTER_SIZE_WIDTH]
+    CONV_FILTER_OUT = [CONV_FILTER_OUT_1, CONV_FILTER_OUT_2, CONV_FILTER_OUT_3]
+    CONV_FILTER_STRIDE = [CONV_FILTER_STRIDE_HEIGHT, CONV_FILTER_STRIDE_WIDTH]
+
+    POOLING_FILTER_SIZE = [POOLING_FILTER_SIZE_HEIGHT, POOLING_FILTER_SIZE_WIDTH,
+                           POOLING_FILTER_SIZE_HEIGHT, POOLING_FILTER_SIZE_WIDTH,
+                           POOLING_FILTER_SIZE_HEIGHT, POOLING_FILTER_SIZE_WIDTH]
+
 
 # data
 data_interface = di.DataInterface(dataset_name='BioCreative',
                                   embedding_dir='dataset/glove.6B/glove.6B.300d.txt',
-                                  batch_size=batch_size)
+                                  batch_size=BATCH_SIZE)
 max_seq_length = data_interface.dataset['training']['max_seq_len']
 embedding_matrix = data_interface.embeddings
 embedding_dimension = embedding_matrix.shape[1]
 vocabulary_size = embedding_matrix.shape[0]
 
 # training data
-tra_num_batch_in_epoch = math.ceil(len(data_interface.dataset['training']['data']) / batch_size)
-
+tra_num_batch_in_epoch = math.ceil(len(data_interface.dataset['training']['data']) / BATCH_SIZE)
 # development data
-dev_num_batch_in_epoch = math.ceil(len(data_interface.dataset['development']['data']) / batch_size)
+dev_num_batch_in_epoch = math.ceil(len(data_interface.dataset['development']['data']) / BATCH_SIZE)
 
 # evaluation metrics
 positive_labels = 0
@@ -71,62 +95,59 @@ recall = 0
 f1_measure = 0
 
 # tensorflow placeholder
-# data_ph = tf.placeholder(tf.int64, [batch_size, max_seq_length], name='data_placeholder')
-data_ph = tf.placeholder(tf.int64, [batch_size, 60], name='data_placeholder')
-labels_ph = tf.placeholder(tf.float32, [batch_size, 2], name='label_placeholder')
+data_ph = tf.placeholder(tf.int64, [BATCH_SIZE, 60], name='data_placeholder')
+labels_ph = tf.placeholder(tf.float32, [BATCH_SIZE, 2], name='label_placeholder')
 embedding_ph = tf.placeholder(tf.float32, [vocabulary_size, embedding_dimension], name='embedding_placeholder')
-seq_lens_ph = tf.placeholder(tf.int64, [batch_size, ], name='sequence_length_placeholder')
+seq_lens_ph = tf.placeholder(tf.int64, [BATCH_SIZE, ], name='sequence_length_placeholder')
 
-if network_type == "BiLSTM":
+# tensorflow model
+if MODEL == "BILSTM":
     model = bilstm.BiLSTMModel(data=data_ph,
                                target=labels_ph,
                                seq_lens=seq_lens_ph,
-                               class_weights=class_weights,
-                               num_hidden=num_hidden,
-                               learning_rate=learning_rate,
+                               class_weights=CLASS_WEIGHTS,
+                               num_hidden=NUM_HIDDEN,
+                               learning_rate=LEARNING_RATE,
                                embedding_size=embedding_dimension,
                                vocab_size=vocabulary_size)
-
-elif network_type == "CNN":
-    # cnn filter weights
-    conv_filters_size = [2, 10, 2, 10, 2, 10]
-    conv_filters_out = [32, 64, 128]
-    max_pool_filter_size = [2, 2, 2, 2, 2, 2]
-    conv_stride = 1
-
+elif MODEL == "CNN":
     model = cnn.CNNModel(data=data_ph,
                          target=labels_ph,
                          seq_lens=seq_lens_ph,
-                         conv_filters_size=conv_filters_size,
-                         conv_filters_out=conv_filters_out,
-                         max_pool_filter_sizes=max_pool_filter_size,
-                         conv_stride=conv_stride,
-                         hidden_unit_size=num_hidden,
+                         conv_filter_size=CONV_FILTER_SIZE,
+                         conv_filter_out=CONV_FILTER_OUT,
+                         pooling_filter_size=POOLING_FILTER_SIZE,
+                         conv_filter_stride=CONV_FILTER_STRIDE,
+                         hidden_unit_size=NUM_HIDDEN,
                          embedding_size=embedding_dimension,
                          vocabulary_size=vocabulary_size,
                          dropout=0.75,
-                         class_weights=class_weights,
-                         learning_rate=learning_rate
+                         class_weights=CLASS_WEIGHTS,
+                         learning_rate=LEARNING_RATE
                          )
 
-# prepare report file
-currentDT = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-report_name = "report_" + str(currentDT) + ".txt"
-report_file = open(report_name, "w+")
-line = "Time: " + str(datetime.datetime.now()) + "\n"
-report_file.write(line)
-line = "Network: " + network_type + "\n"
-report_file.write(line)
-line = "Batch size: " + str(batch_size) + "\n"
-report_file.write(line)
-line = "Number of Epochs: " + str(num_epoch) + "\n"
-report_file.write(line)
-line = "Number of Hidden Layers: " + str(num_hidden) + "\n"
-report_file.write(line)
-line = "Learning Rate: " + str(learning_rate) + "\n"
-report_file.write(line)
-line = "\nTraining Error \n"
-report_file.write(line)
+# model write
+if RUN_TYPE != "GRIDSEARCH":
+    # prepare report file
+    currentDT = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+    report_name = "report_" + str(currentDT) + ".txt"
+    report_file = open(report_name, "w+")
+    line = "Time: " + str(datetime.datetime.now()) + "\n"
+    report_file.write(line)
+    line = "Network: " + MODEL + "\n"
+    report_file.write(line)
+    line = "Batch size: " + str(BATCH_SIZE) + "\n"
+    report_file.write(line)
+    line = "Number of Epochs: " + str(NUM_EPOCH) + "\n"
+    report_file.write(line)
+    line = "Number of Hidden Layers: " + str(NUM_HIDDEN) + "\n"
+    report_file.write(line)
+    line = "Learning Rate: " + str(LEARNING_RATE) + "\n"
+    report_file.write(line)
+    line = "\nTraining Error \n"
+    report_file.write(line)
+else:
+    report_file = open(REPORT_FILE_NAME, "w+")
 
 # create a session and run the graph
 with tf.Session() as sess:
@@ -135,7 +156,7 @@ with tf.Session() as sess:
     word_embedding_init = model.embedding_v.assign(embedding_ph)
     sess.run(word_embedding_init, feed_dict={embedding_ph: embedding_matrix})
 
-    for epoch in range(num_epoch):
+    for epoch in range(NUM_EPOCH):
         # training set optimize
         progress_bar = progressbar.ProgressBar(maxval=tra_num_batch_in_epoch,
                                                widgets=["Epoch:{} (Optimize) ".format(epoch),
@@ -147,7 +168,7 @@ with tf.Session() as sess:
 
         for batch in range(tra_num_batch_in_epoch):
             batch_data, batch_labels, batch_seq_lens = data_interface.get_batch(dataset_type='training')
-            if len(batch_labels) == batch_size:
+            if len(batch_labels) == BATCH_SIZE:
                 sess.run(model.optimize, feed_dict={data_ph: batch_data,
                                                     labels_ph: batch_labels,
                                                     seq_lens_ph: batch_seq_lens})
@@ -166,7 +187,7 @@ with tf.Session() as sess:
         progress_bar.start()
         for batch in range(tra_num_batch_in_epoch):
             batch_data, batch_labels, batch_seq_lens = data_interface.get_batch(dataset_type='training')
-            if len(batch_labels) == batch_size:
+            if len(batch_labels) == BATCH_SIZE:
                 batch_prediction = sess.run(model.prediction, feed_dict={data_ph: batch_data,
                                                                          labels_ph: batch_labels,
                                                                          seq_lens_ph: batch_seq_lens})
@@ -182,8 +203,11 @@ with tf.Session() as sess:
         precision, recall, f1_measure = calculate_metrics(fn, fp, positive_labels)
 
         print("Epoch Number: {}, Precision:{}, Recall:{}, f1-measure:{}\n".format(epoch, precision, recall, f1_measure))
-        report_file.write(
-            "Epoch Number: {}, Precision:{}, Recall:{}, f1-measure:{}\n".format(epoch, precision, recall, f1_measure))
+        if RUN_TYPE != "GRIDSEARCH":
+            report_file.write("Epoch Number: {}, Precision:{}, Recall:{}, f1-measure:{}\n".format(epoch,
+                                                                                                  precision,
+                                                                                                  recall,
+                                                                                                  f1_measure))
 
     # development set evaluation
     positive_labels = 0
@@ -201,7 +225,7 @@ with tf.Session() as sess:
     progress_bar.start()
     for batch in range(dev_num_batch_in_epoch):
         batch_data, batch_labels, batch_seq_lens = data_interface.get_batch(dataset_type='development')
-        if len(batch_labels) == batch_size:
+        if len(batch_labels) == BATCH_SIZE:
             batch_prediction = sess.run(model.prediction, feed_dict={data_ph: batch_data,
                                                                      labels_ph: batch_labels,
                                                                      seq_lens_ph: batch_seq_lens})
@@ -214,7 +238,8 @@ with tf.Session() as sess:
     progress_bar.finish()
     precision, recall, f1_measure = calculate_metrics(fn, fp, positive_labels)
     print("Development Set Evaluation: Precision:{}, Recall:{}, f1-measure:{}\n".format(precision, recall, f1_measure))
-    report_file.write(
-        "\nDevelopment Error \nPrecision:{}, Recall:{}, f1-measure:{} \n".format(precision, recall, f1_measure))
-
+    if RUN_TYPE != "GRIDSEARCH":
+        report_file.write("\nDevelopment Error \nPrecision:{}, Recall:{}, f1-measure:{} \n".format(precision,
+                                                                                                   recall,
+                                                                                                   f1_measure))
 report_file.close()
