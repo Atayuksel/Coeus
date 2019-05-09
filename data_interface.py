@@ -139,6 +139,8 @@ class DataInterface(object):
             batch_data = self.process_data(batch_data)
             self.process_seq_length(batch_seq_lens)
 
+        batch_data = batch_data[:, :60]
+
         return batch_data, batch_labels, batch_seq_lens
 
     def process_data(self, data):

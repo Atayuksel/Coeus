@@ -6,6 +6,7 @@ import tensorflow as tf
 import progressbar
 import data_interface as di
 import bilstm_model as bilstm
+import cnn_model as cnn
 
 
 def get_metrics(logits, labels):
@@ -38,16 +39,17 @@ def calculate_metrics(false_negative, false_positive, positive_labels):
 
 
 # network hyper-parameters
-network_type = "BiLSTM"
-batch_size = 10
-num_epoch = 50
+# network_type = "BiLSTM"
+network_type = "CNN"
+batch_size = 100
+num_epoch = 20
 class_weights = tf.constant([[1., 1.]])
-num_hidden = 512
-learning_rate = 0.01
+num_hidden = 2048
+learning_rate = 0.001
 
 # data
 data_interface = di.DataInterface(dataset_name='BioCreative',
-                                  embedding_dir='dataset/glove.6B/glove.6B.50d.txt',
+                                  embedding_dir='dataset/glove.6B/glove.6B.300d.txt',
                                   batch_size=batch_size)
 max_seq_length = data_interface.dataset['training']['max_seq_len']
 embedding_matrix = data_interface.embeddings
@@ -69,20 +71,43 @@ recall = 0
 f1_measure = 0
 
 # tensorflow placeholder
-data_ph = tf.placeholder(tf.int64, [batch_size, max_seq_length], name='data_placeholder')
+# data_ph = tf.placeholder(tf.int64, [batch_size, max_seq_length], name='data_placeholder')
+data_ph = tf.placeholder(tf.int64, [batch_size, 60], name='data_placeholder')
 labels_ph = tf.placeholder(tf.float32, [batch_size, 2], name='label_placeholder')
 embedding_ph = tf.placeholder(tf.float32, [vocabulary_size, embedding_dimension], name='embedding_placeholder')
 seq_lens_ph = tf.placeholder(tf.int64, [batch_size, ], name='sequence_length_placeholder')
 
-# tensorflow model
-model = bilstm.BiLSTMModel(data=data_ph,
-                           target=labels_ph,
-                           seq_lens=seq_lens_ph,
-                           class_weights=class_weights,
-                           num_hidden=num_hidden,
-                           learning_rate=learning_rate,
-                           embedding_size=embedding_dimension,
-                           vocab_size=vocabulary_size)
+if network_type == "BiLSTM":
+    model = bilstm.BiLSTMModel(data=data_ph,
+                               target=labels_ph,
+                               seq_lens=seq_lens_ph,
+                               class_weights=class_weights,
+                               num_hidden=num_hidden,
+                               learning_rate=learning_rate,
+                               embedding_size=embedding_dimension,
+                               vocab_size=vocabulary_size)
+
+elif network_type == "CNN":
+    # cnn filter weights
+    conv_filters_size = [2, 10, 2, 10, 2, 10]
+    conv_filters_out = [32, 64, 128]
+    max_pool_filter_size = [2, 2, 2, 2, 2, 2]
+    conv_stride = 1
+
+    model = cnn.CNNModel(data=data_ph,
+                         target=labels_ph,
+                         seq_lens=seq_lens_ph,
+                         conv_filters_size=conv_filters_size,
+                         conv_filters_out=conv_filters_out,
+                         max_pool_filter_sizes=max_pool_filter_size,
+                         conv_stride=conv_stride,
+                         hidden_unit_size=num_hidden,
+                         embedding_size=embedding_dimension,
+                         vocabulary_size=vocabulary_size,
+                         dropout=0.75,
+                         class_weights=class_weights,
+                         learning_rate=learning_rate
+                         )
 
 # prepare report file
 currentDT = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
