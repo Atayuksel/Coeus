@@ -7,6 +7,7 @@ import progressbar
 import data_interface as di
 import bilstm_model as bilstm
 import cnn_model as cnn
+import configparser
 
 
 def get_metrics(logits, labels):
@@ -38,28 +39,34 @@ def calculate_metrics(false_negative, false_positive, positive_labels):
     return precision, recall, f1_measure
 
 
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+
 # read parameters from config.ini
-RUN_TYPE = "GRIDSEARCH"
-REPORT_FILE_NAME = "gridsearch_report.txt"
-MODEL = "CNN"
-BATCH_SIZE = 100
-NUM_EPOCH = 20
-NUM_HIDDEN = 2048
-LEARNING_RATE = 0.001
+config = configparser.ConfigParser()
+config.read('config.ini')
+
+RUN_TYPE = config['HYPERPARAMETERS']['run_type']
+REPORT_FILE_NAME = config['HYPERPARAMETERS']['report_file_name']
+MODEL = config['HYPERPARAMETERS']['model']
+BATCH_SIZE = int(config['HYPERPARAMETERS']['batch_size'])
+NUM_EPOCH = int(config['HYPERPARAMETERS']['num_epoch'])
+NUM_HIDDEN = int(config['HYPERPARAMETERS']['num_hidden_unit'])
+LEARNING_RATE = float(config['HYPERPARAMETERS']['learning_rate'])
+EMBEDDING_SIZE = config['HYPERPARAMETERS']['embedding_size']
 CLASS_WEIGHTS = tf.constant([[1., 1.]])
 
 # cnn filter weights, read from config.ini
 if MODEL == "CNN":
-    CONV_FILTER_SIZE_HEIGHT = 2
-    CONV_FILTER_SIZE_WIDTH = 10
-    CONV_FILTER_OUT_1 = 32
-    CONV_FILTER_OUT_2 = 64
-    CONV_FILTER_OUT_3 = 128
-    CONV_FILTER_STRIDE_HEIGHT = 1
-    CONV_FILTER_STRIDE_WIDTH = 1
+    CONV_FILTER_SIZE_HEIGHT = int(config['HYPERPARAMETERS']['conv_filter_size_height'])
+    CONV_FILTER_SIZE_WIDTH = int(config['HYPERPARAMETERS']['conv_filter_size_width'])
+    CONV_FILTER_OUT_1 = int(config['HYPERPARAMETERS']['conv_filter_out_1'])
+    CONV_FILTER_OUT_2 = int(config['HYPERPARAMETERS']['conv_filter_out_2'])
+    CONV_FILTER_OUT_3 = int(config['HYPERPARAMETERS']['conv_filter_out_3'])
+    CONV_FILTER_STRIDE_HEIGHT = int(config['HYPERPARAMETERS']['conv_filter_stride_height'])
+    CONV_FILTER_STRIDE_WIDTH = int(config['HYPERPARAMETERS']['conv_filter_stride_width'])
 
-    POOLING_FILTER_SIZE_HEIGHT = 2
-    POOLING_FILTER_SIZE_WIDTH = 2
+    POOLING_FILTER_SIZE_HEIGHT = int(config['HYPERPARAMETERS']['pooling_filter_size_height'])
+    POOLING_FILTER_SIZE_WIDTH = int(config['HYPERPARAMETERS']['pooling_filter_size_width'])
 
     CONV_FILTER_SIZE = [CONV_FILTER_SIZE_HEIGHT, CONV_FILTER_SIZE_WIDTH,
                         CONV_FILTER_SIZE_HEIGHT, CONV_FILTER_SIZE_WIDTH,
@@ -73,9 +80,11 @@ if MODEL == "CNN":
 
 
 # data
+pre_embedding_directory = 'dataset/glove.6B/glove.6B.' + EMBEDDING_SIZE + 'd.txt'
 data_interface = di.DataInterface(dataset_name='BioCreative',
-                                  embedding_dir='dataset/glove.6B/glove.6B.300d.txt',
+                                  embedding_dir=pre_embedding_directory,
                                   batch_size=BATCH_SIZE)
+
 max_seq_length = data_interface.dataset['training']['max_seq_len']
 embedding_matrix = data_interface.embeddings
 embedding_dimension = embedding_matrix.shape[1]
@@ -148,6 +157,47 @@ if RUN_TYPE != "GRIDSEARCH":
     report_file.write(line)
 else:
     report_file = open(REPORT_FILE_NAME, "w+")
+    report_file.write("BATCH_SIZE:{}\n".format(BATCH_SIZE))
+    print("BATCH_SIZE:{}".format(BATCH_SIZE))
+
+    report_file.write("NUM_EPOCH:{}\n".format(NUM_EPOCH))
+    print("NUM_EPOCH:{}".format(NUM_EPOCH))
+
+    report_file.write("NUM_HIDDEN:{}\n".format(NUM_HIDDEN))
+    print("NUM_HIDDEN:{}".format(NUM_HIDDEN))
+
+    report_file.write("LEARNING_RATE:{}\n".format(LEARNING_RATE))
+    print("LEARNING_RATE:{}".format(LEARNING_RATE))
+
+    report_file.write("EMBEDDING_SIZE:{}\n".format(EMBEDDING_SIZE))
+    print("EMBEDDING_SIZE:{}".format(EMBEDDING_SIZE))
+
+    report_file.write("CONV_FILTER_SIZE_HEIGHT:{}\n".format(CONV_FILTER_SIZE_HEIGHT))
+    print("CONV_FILTER_SIZE_HEIGHT:{}".format(CONV_FILTER_SIZE_HEIGHT))
+
+    report_file.write("CONV_FILTER_SIZE_WIDTH:{}\n".format(CONV_FILTER_SIZE_WIDTH))
+    print("CONV_FILTER_SIZE_WIDTH:{}".format(CONV_FILTER_SIZE_WIDTH))
+
+    report_file.write("CONV_FILTER_OUT_1:{}\n".format(CONV_FILTER_OUT_1))
+    print("CONV_FILTER_OUT_1:{}".format(CONV_FILTER_OUT_1))
+
+    report_file.write("CONV_FILTER_OUT_2:{}\n".format(CONV_FILTER_OUT_2))
+    print("CONV_FILTER_OUT_2:{}".format(CONV_FILTER_OUT_2))
+
+    report_file.write("CONV_FILTER_OUT_3:{}\n".format(CONV_FILTER_OUT_3))
+    print("CONV_FILTER_OUT_3:{}".format(CONV_FILTER_OUT_3))
+
+    report_file.write("CONV_FILTER_STRIDE_HEIGHT:{}\n".format(CONV_FILTER_STRIDE_HEIGHT))
+    print("CONV_FILTER_STRIDE_HEIGHT:{}".format(CONV_FILTER_STRIDE_HEIGHT))
+
+    report_file.write("CONV_FILTER_STRIDE_WIDTH:{}\n".format(CONV_FILTER_STRIDE_WIDTH))
+    print("CONV_FILTER_STRIDE_WIDTH:{}".format(CONV_FILTER_STRIDE_WIDTH))
+
+    report_file.write("POOLING_FILTER_SIZE_HEIGHT:{}\n".format(POOLING_FILTER_SIZE_HEIGHT))
+    print("POOLING_FILTER_SIZE_HEIGHT:{}".format(POOLING_FILTER_SIZE_HEIGHT))
+
+    report_file.write("POOLING_FILTER_SIZE_WIDTH:{}\n".format(POOLING_FILTER_SIZE_WIDTH))
+    print("POOLING_FILTER_SIZE_WIDTH:{}".format(POOLING_FILTER_SIZE_WIDTH))
 
 # create a session and run the graph
 with tf.Session() as sess:
@@ -201,9 +251,9 @@ with tf.Session() as sess:
             progress_bar.update(progress_bar_counter)
         progress_bar.finish()
         precision, recall, f1_measure = calculate_metrics(fn, fp, positive_labels)
-
-        print("Epoch Number: {}, Precision:{}, Recall:{}, f1-measure:{}\n".format(epoch, precision, recall, f1_measure))
         if RUN_TYPE != "GRIDSEARCH":
+            print("Epoch Number: {}, Precision:{}, Recall:{}, f1-measure:{}\n".format(epoch, precision, recall,
+                                                                                      f1_measure))
             report_file.write("Epoch Number: {}, Precision:{}, Recall:{}, f1-measure:{}\n".format(epoch,
                                                                                                   precision,
                                                                                                   recall,
@@ -237,9 +287,16 @@ with tf.Session() as sess:
         progress_bar.update(progress_bar_counter)
     progress_bar.finish()
     precision, recall, f1_measure = calculate_metrics(fn, fp, positive_labels)
-    print("Development Set Evaluation: Precision:{}, Recall:{}, f1-measure:{}\n".format(precision, recall, f1_measure))
     if RUN_TYPE != "GRIDSEARCH":
+        print("Development Set Evaluation: Precision:{}, Recall:{}, f1-measure:{}\n".format(precision, recall,
+                                                                                            f1_measure))
         report_file.write("\nDevelopment Error \nPrecision:{}, Recall:{}, f1-measure:{} \n".format(precision,
                                                                                                    recall,
                                                                                                    f1_measure))
+    else:
+        print("Development Set Evaluation: Precision:{}, Recall:{}, f1-measure:{}\n".format(precision, recall,
+                                                                                            f1_measure))
+        report_file.write("Development Error \nPrecision:{}, Recall:{}, f1-measure:{} \n".format(precision,
+                                                                                                 recall,
+                                                                                                 f1_measure))
 report_file.close()
