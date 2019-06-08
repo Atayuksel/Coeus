@@ -262,7 +262,6 @@ class BioCreativeData(object):
                       {'abstractID': '10047461', 'CPR': '3', 'eval_status': 'Y ', 'relation_type': 'ACTIVATOR', 'arg_1': 'T7', 'arg_2': 'T39'},
                       ... ]
         """
-
         result = {}
         with open(file_location, 'r', encoding="utf-8") as file:
             lines = file.readlines()
