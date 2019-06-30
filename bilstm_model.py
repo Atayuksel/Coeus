@@ -16,41 +16,152 @@ def lazy_property(function):
 
 
 class BiLSTMModel:
-    def __init__(self, data, target, seq_lens, class_weights, num_hidden, learning_rate, embedding_size, vocab_size):
+    def __init__(self, data, target, seq_lens, learning_rate, embedding_dimension, vocab_size,
+                 embedding_placeholder, lstm_hidden_unit_size,
+                 distance_protein,
+                 distance_chemical,
+                 max_distance,
+                 position_embedding_size,
+                 data_pos_tags,
+                 pos_tag_embedding_size,
+                 data_iob_tags,
+                 iob_tag_embedding_size):
+
         self.data = data
         self.target = target
         self.seq_lens = seq_lens
-        self.class_weights = class_weights
-        self.num_hidden = num_hidden
-        self.learning_rate = learning_rate
-        self.embedding_size = embedding_size
-        self.vocabulary_size = vocab_size
+        self.distance_to_protein = distance_protein
+        self.distance_to_chemical = distance_chemical
 
-        seq_len = self.data.get_shape()[1]
-        target_size = self.target.get_shape()[1]
+        self.data_pos_tags = data_pos_tags
+        self.pos_tag_embedding_size = pos_tag_embedding_size
+        self.pos_tag_size = data_pos_tags.get_shape()[0].value
+
+        self.data_iob_tags = data_iob_tags
+        self.iob_tag_embedding_size = iob_tag_embedding_size
+        self.iob_tag_size = data_iob_tags.get_shape()[0].value
+
+        self.position_embedding_size = position_embedding_size
+        self.learning_rate = learning_rate
+        self.embedding_length = embedding_dimension
+        self.vocabulary_size = vocab_size
+        self.lstm_hidden_unit_size = lstm_hidden_unit_size
+
+        self.embedding_placeholder = embedding_placeholder
+        self.embedding_matrix_size = self.embedding_placeholder.get_shape()[0].value
+
+        max_seq_len = self.data.get_shape()[1].value
+        target_size = self.target.get_shape()[1].value
 
         self.weights = {
-            'out': tf.Variable(tf.random_normal([2 * self.num_hidden, target_size.value]))}
+            'out': tf.Variable(tf.random_normal([2*self.lstm_hidden_unit_size, target_size]))}
         self.biases = {
-            'out': tf.Variable(tf.random_normal([target_size.value]))}
-        self.embedding_v = tf.Variable(tf.constant(0.0, shape=[self.vocabulary_size, self.embedding_size]),
-                                       trainable=True,
-                                       name="word_embedding_variable",
-                                       dtype=tf.float32)
+            'out': tf.Variable(tf.random_normal([target_size]))}
+
+        self.embedding_v_1 = tf.Variable(tf.zeros([self.embedding_matrix_size, self.embedding_length]),
+                                         trainable=True,
+                                         name="word_embedding_variable1",
+                                         dtype=tf.float32)
+        self.embedding_v_2 = tf.Variable(tf.zeros([self.embedding_matrix_size, self.embedding_length]),
+                                         trainable=True,
+                                         name="word_embedding_variable2",
+                                         dtype=tf.float32)
+        self.embedding_v_3 = tf.Variable(tf.zeros([self.embedding_matrix_size, self.embedding_length]),
+                                         trainable=True,
+                                         name="word_embedding_variable3",
+                                         dtype=tf.float32)
+        self.embedding_v_4 = tf.Variable(tf.zeros([self.embedding_matrix_size, self.embedding_length]),
+                                         trainable=True,
+                                         name="word_embedding_variable4",
+                                         dtype=tf.float32)
+        self.embedding_v_5 = tf.Variable(tf.zeros([self.embedding_matrix_size, self.embedding_length]),
+                                         trainable=True,
+                                         name="word_embedding_variable5",
+                                         dtype=tf.float32)
+        self.embedding_v_6 = tf.Variable(tf.zeros([self.embedding_matrix_size, self.embedding_length]),
+                                         trainable=True,
+                                         name="word_embedding_variable6",
+                                         dtype=tf.float32)
+        self.embedding_v_7 = tf.Variable(tf.zeros([self.embedding_matrix_size, self.embedding_length]),
+                                         trainable=True,
+                                         name="word_embedding_variable7",
+                                         dtype=tf.float32)
+        self.embedding_v_8 = tf.Variable(tf.zeros([self.embedding_matrix_size, self.embedding_length]),
+                                         trainable=True,
+                                         name="word_embedding_variable8",
+                                         dtype=tf.float32)
+
+        self.distance_chemical_embedding = tf.Variable(tf.random_normal([max_distance, self.position_embedding_size]),
+                                                       trainable=True,
+                                                       name="chemical_distance_variable",
+                                                       dtype=tf.float32)
+        self.distance_protein_embedding = tf.Variable(tf.random_normal([max_distance, self.position_embedding_size]),
+                                                      trainable=True,
+                                                      name="protein_distance_variable",
+                                                      dtype=tf.float32)
+        self.pos_tag_embedding = tf.Variable(tf.random_normal([self.pos_tag_size, self.pos_tag_embedding_size]),
+                                             trainable=True,
+                                             name="pos_tag_embedding_variable",
+                                             dtype=tf.float32)
+        self.iob_tag_embedding = tf.Variable(tf.random_normal([self.iob_tag_size, self.iob_tag_embedding_size]),
+                                             trainable=True,
+                                             name="iob_tag_embedding_variable",
+                                             dtype=tf.float32)
+
+        self.assign1
+        self.assign2
+        self.assign3
+        self.assign4
+        self.assign5
+        self.assign6
+        self.assign7
+        self.assign8
 
         self.prediction
         self.optimize
-        self.error
+
+    @lazy_property
+    def assign1(self):
+        word_embedding_init1 = self.embedding_v_1.assign(self.embedding_placeholder)
+        return word_embedding_init1
+    @lazy_property
+    def assign2(self):
+        word_embedding_init2 = self.embedding_v_2.assign(self.embedding_placeholder)
+        return word_embedding_init2
+    @lazy_property
+    def assign3(self):
+        word_embedding_init3 = self.embedding_v_3.assign(self.embedding_placeholder)
+        return word_embedding_init3
+    @lazy_property
+    def assign4(self):
+        word_embedding_init4 = self.embedding_v_4.assign(self.embedding_placeholder)
+        return word_embedding_init4
+    @lazy_property
+    def assign5(self):
+        word_embedding_init5 = self.embedding_v_5.assign(self.embedding_placeholder)
+        return word_embedding_init5
+    @lazy_property
+    def assign6(self):
+        word_embedding_init6 = self.embedding_v_6.assign(self.embedding_placeholder)
+        return word_embedding_init6
+    @lazy_property
+    def assign7(self):
+        word_embedding_init7 = self.embedding_v_7.assign(self.embedding_placeholder)
+        return word_embedding_init7
+    @lazy_property
+    def assign8(self):
+        word_embedding_init8 = self.embedding_v_8.assign(self.embedding_placeholder)
+        return word_embedding_init8
 
     def bilstm_layer(self, data, keep_prob):
         max_seq_len = data.get_shape()[1]
         x = tf.unstack(data, max_seq_len, 1)
-        lstm_fw_cell = rnn.LSTMBlockCell(num_units=self.num_hidden)
+        lstm_fw_cell = rnn.LSTMBlockCell(num_units=self.lstm_hidden_unit_size)
         lstm_fw_cell_dropout = rnn.DropoutWrapper(cell=lstm_fw_cell,
                                                   input_keep_prob=keep_prob,
                                                   output_keep_prob=keep_prob,
                                                   state_keep_prob=keep_prob)
-        lstm_bw_cell = rnn.LSTMBlockCell(num_units=self.num_hidden)
+        lstm_bw_cell = rnn.LSTMBlockCell(num_units=self.lstm_hidden_unit_size)
         lstm_bw_cell_dropout = rnn.DropoutWrapper(cell=lstm_bw_cell,
                                                   input_keep_prob=keep_prob,
                                                   output_keep_prob=keep_prob,
@@ -76,27 +187,34 @@ class BiLSTMModel:
 
     @lazy_property
     def prediction(self):
-        embedding_data = tf.nn.embedding_lookup(self.embedding_v, self.data)
-        rnn_output = self.bilstm_layer(embedding_data, 0.5)
+        embedding_data = tf.nn.embedding_lookup(params=[self.embedding_v_1, self.embedding_v_2, self.embedding_v_3,
+                                                        self.embedding_v_4, self.embedding_v_5, self.embedding_v_6,
+                                                        self.embedding_v_7, self.embedding_v_8],
+                                                ids=self.data, partition_strategy='div')
+
+        protein_distance_embedding = tf.nn.embedding_lookup(params=self.distance_protein_embedding,
+                                                            ids=self.distance_to_protein)
+
+        chemical_distance_embedding = tf.nn.embedding_lookup(params=self.distance_chemical_embedding,
+                                                             ids=self.distance_to_chemical)
+
+        batch_pos_tag_embedding = tf.nn.embedding_lookup(params=self.pos_tag_embedding,
+                                                         ids=self.data_pos_tags)
+
+        batch_iob_tag_embedding = tf.nn.embedding_lookup(params=self.iob_tag_embedding,
+                                                         ids=self.data_iob_tags)
+
+        data = tf.concat([embedding_data, protein_distance_embedding, chemical_distance_embedding,
+                          batch_pos_tag_embedding, batch_iob_tag_embedding], 2)
+
+        rnn_output = self.bilstm_layer(data, 0.5)
         max_pooling_output = self.lstm_max_pooling(rnn_output)
-        logits = tf.matmul(max_pooling_output, self.weights['out']) + self.biases['out']
+        logits = tf.add(tf.matmul(max_pooling_output, self.weights['out']), self.biases['out'])
         return logits
 
     @lazy_property
     def optimize(self):
-        weights = tf.reduce_sum(self.class_weights * self.target, axis=1)
-        unweighted_loss_op = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=self.prediction,
-                                                                                       labels=self.target))
-        weighted_loss = unweighted_loss_op * weights
-        loss = tf.reduce_mean(weighted_loss)
-        optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate,
-                                           beta1=0.9,
-                                           beta2=0.999)
+        unweighted_loss_op = tf.nn.softmax_cross_entropy_with_logits_v2(logits=self.prediction, labels=self.target)
+        loss = tf.reduce_mean(unweighted_loss_op)
+        optimizer = tf.train.RMSPropOptimizer(learning_rate=self.learning_rate)
         return optimizer.minimize(loss)
-
-    @lazy_property
-    def error(self):
-        mistakes = tf.not_equal(
-            tf.argmax(self.target, 1), tf.argmax(self.prediction, 1))
-        # return tf.reduce_mean(tf.cast(mistakes, tf.float32))
-        return tf.cast(mistakes, tf.float32)

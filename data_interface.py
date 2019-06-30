@@ -1,29 +1,30 @@
 import bc_dataset
 import nltk
 import numpy as np
+from contextlib import redirect_stdout
+import os
 
 
 class DataInterface(object):
 
-    def __init__(self, dataset_name, embedding_dir, batch_size, text_selection, binary_relation, pos_embedding):
+    def __init__(self, dataset_name, embedding_dir, batch_size, text_selection, binary_relation):
         self.embedding_dir = embedding_dir
         self.dataset_name = dataset_name
         self.batch_size = batch_size
-        self.pos_embedding_flag = pos_embedding
         self.text_selection = text_selection  # full, part, e_part
         self.binary_relation = binary_relation  # True, False
 
         self.word_tokenizer = 'NLTK'
         self.embedding_dim = 0
-        self.dataset = {'training': {'data': [], 'labels': [], 'entities': [], 'abstract_ids': [], 'entity_ids': [],
-                                     'seq_lens': [], 'false_positive': [], 'false_negative': [],
-                                     'argument_locations': [], 'max_seq_len': 0, 'batch_idx': 0},
-                        'development': {'data': [], 'labels': [], 'entities': [], 'abstract_ids': [], 'entity_ids': [],
-                                        'seq_lens': [], 'false_positive': [], 'false_negative': [],
-                                        'argument_locations': [], 'max_seq_len': 0, 'batch_idx': 0},
-                        'test': {'data': [], 'labels': [], 'entities': [], 'abstract_ids': [], 'entity_ids': [],
-                                 'seq_lens': [], 'false_positive': [], 'false_negative': [],
-                                 'argument_locations': [], 'max_seq_len': 0, 'batch_idx': 0}}
+        self.dataset = {'training': {'data': [], 'pos_tags': [], 'iob_tags': [], 'labels': [], 'entities': [],
+                                     'abstract_ids': [], 'entity_ids': [], 'seq_lens': [], 'false_positive': [],
+                                     'false_negative': [], 'argument_locations': [], 'max_seq_len': 0, 'batch_idx': 0},
+                        'development': {'data': [], 'pos_tags': [], 'iob_tags': [], 'labels': [], 'entities': [],
+                                        'abstract_ids': [], 'entity_ids': [], 'seq_lens': [], 'false_positive': [],
+                                        'false_negative': [], 'argument_locations': [], 'max_seq_len': 0, 'batch_idx': 0},
+                        'test': {'data': [], 'pos_tags': [], 'iob_tags': [], 'labels': [], 'entities': [],
+                                 'abstract_ids': [], 'entity_ids': [], 'seq_lens': [], 'false_positive': [],
+                                 'false_negative': [], 'argument_locations': [], 'max_seq_len': 0, 'batch_idx': 0}}
 
         if dataset_name == 'BioCreative':
             self.bc_dataset = bc_dataset.BioCreativeData(input_root='dataset',
@@ -33,13 +34,16 @@ class DataInterface(object):
 
             dataset_validity = self.check_dataset(self.bc_dataset)
             self.raw_dataset = self.bc_dataset.dataset
+            self.pos_tag_mapping = {'pad': 0, 'unk': 1}
+            self.iob_tag_mapping = {'pad': 0, 'unk': 1}
+
             if dataset_validity:
                 self.parse_dataset(self.dataset['training'], self.raw_dataset[0], self.raw_dataset[1],
-                                   self.text_selection, self.binary_relation)
+                                   self.text_selection, self.binary_relation, True)
                 self.parse_dataset(self.dataset['development'], self.raw_dataset[2], self.raw_dataset[3],
-                                   self.text_selection, self.binary_relation)
+                                   self.text_selection, self.binary_relation, False)
                 self.parse_dataset(self.dataset['test'], self.raw_dataset[4], self.raw_dataset[5],
-                                   self.text_selection, self.binary_relation)
+                                   self.text_selection, self.binary_relation, False)
 
             self.pos_to_id = self.create_pos_embeddings()
             self.embeddings, self.word_to_id = self.parse_embedding()
@@ -73,7 +77,7 @@ class DataInterface(object):
 
         return embeddings, word_id_mapping
 
-    def parse_dataset(self, data_dictionary, data, labels, text_selection, binary_relation):
+    def parse_dataset(self, data_dictionary, data, labels, text_selection, binary_relation, training_flag):
         for i in range(len(data)):
             label = labels[i]
 
@@ -92,26 +96,43 @@ class DataInterface(object):
             arg2_start_idx = instance[9]
 
             # full text sentence or text between entities
-            protein_loc, chemical_loc, tokenized_sentence = self.preprocess_sentence(sentence=instance_text,
-                                                                                     arg1_text=arg1_text,
-                                                                                     arg1_start=int(arg1_start_idx),
-                                                                                     arg1_type=arg1_type,
-                                                                                     arg2_text=arg2_text,
-                                                                                     arg2_start=int(arg2_start_idx),
-                                                                                     arg2_type=arg2_type,
-                                                                                     sentence_trim=text_selection)
+            protein_loc, chemical_loc, tokenized_sentence, \
+                sent_pos_tags, sent_iob_tags = self.preprocess_sentence(sentence=instance_text,
+                                                                        arg1_text=arg1_text,
+                                                                        arg1_start=int(arg1_start_idx),
+                                                                        arg1_type=arg1_type,
+                                                                        arg2_text=arg2_text,
+                                                                        arg2_start=int(arg2_start_idx),
+                                                                        arg2_type=arg2_type,
+                                                                        sentence_trim=text_selection)
+
+            if training_flag:  # create pos tag and iob tag only from training dataset.
+                # create pos tag mapping dictionary
+                for j in range(len(sent_pos_tags)):
+                    pos_tag = sent_pos_tags[j]
+                    if pos_tag not in self.pos_tag_mapping:
+                        self.pos_tag_mapping[pos_tag] = len(self.pos_tag_mapping)
+
+                # create iob tag mapping dictionary
+                for j in range(len(sent_iob_tags)):
+                    iob_tag = sent_iob_tags[j]
+                    if iob_tag not in self.iob_tag_mapping:
+                        self.iob_tag_mapping[iob_tag] = len(self.iob_tag_mapping)
+
             # binary relation or multiclass relation
             if binary_relation and label != 0:
                 label = 1
 
             # check for sentence empty or not
-            if len(instance_text) != 0:
+            if len(tokenized_sentence) != 0:
                 # get maximum sequence length
                 if data_dictionary['max_seq_len'] < len(tokenized_sentence):
                     data_dictionary['max_seq_len'] = len(tokenized_sentence)
 
                 data_dictionary['abstract_ids'].append(instance_id)
                 data_dictionary['data'].append(tokenized_sentence)
+                data_dictionary['pos_tags'].append(sent_pos_tags)
+                data_dictionary['iob_tags'].append(sent_iob_tags)
                 data_dictionary['entities'].append((arg1_text, arg2_text))
                 data_dictionary['entity_ids'].append((arg1_id, arg2_id))
                 data_dictionary['labels'].append(label)
@@ -120,6 +141,7 @@ class DataInterface(object):
 
     def get_batch(self, dataset_type):
         dataset = self.dataset[dataset_type]
+
         if dataset['batch_idx'] == len(dataset['data']):
             dataset['batch_idx'] = 0
 
@@ -129,40 +151,74 @@ class DataInterface(object):
         # get batch data
         pad_id_data = self.word_to_id['pad']
         pad_id_distance = self.pos_to_id['pad']
+        pad_id_pos_tag = self.pos_tag_mapping['pad']
+        pad_id_iob_tag = self.iob_tag_mapping['pad']
 
+        # create matrix for token_name, token_dist_protein, token_dist_chemical, token_pos, token_iob
         batch_data = np.full((self.batch_size, dataset['max_seq_len']), pad_id_data)
         batch_distance_protein = np.full((self.batch_size, dataset['max_seq_len']), pad_id_distance)
         batch_distance_chemical = np.full((self.batch_size, dataset['max_seq_len']), pad_id_distance)
+        batch_data_pos_ids = np.full((self.batch_size, dataset['max_seq_len']), pad_id_pos_tag)
+        batch_data_iob_ids = np.full((self.batch_size, dataset['max_seq_len']), pad_id_iob_tag)
 
+        # for each sentence from batch_start_idx to batch_end_idx
         for batch_idx in range(batch_start_idx, batch_end_idx):
             tokenized_text = dataset['data'][batch_idx]
+            sentence_pos_ids = dataset['pos_tags'][batch_idx]
+            sentence_iob_ids = dataset['iob_tags'][batch_idx]
             protein_loc = dataset['argument_locations'][batch_idx][0]
             chemical_loc = dataset['argument_locations'][batch_idx][1]
+
+            # traverse sentence for each token
             for token_idx in range(len(tokenized_text)):
-                token = tokenized_text[token_idx]
-                distance_to_protein = token_idx - protein_loc
-                distance_to_chemical = token_idx - chemical_loc
+                token = tokenized_text[token_idx]  # word token
+                pos_tag = sentence_pos_ids[token_idx]  # token pos token
+                iob_tag = sentence_iob_ids[token_idx]  # token iob token
+                distance_to_protein = token_idx - protein_loc  # token distance to protein
+                distance_to_chemical = token_idx - chemical_loc  # token distance to chemical
+
+                # get token id mapping
                 if token in self.word_to_id:
                     token_id = self.word_to_id[token]
                 else:
-                    token_id = 0
+                    token_id = self.word_to_id['unk']
 
+                # get token pos id mapping
+                if pos_tag in self.pos_tag_mapping:
+                    pos_id = self.pos_tag_mapping[pos_tag]
+                else:
+                    pos_id = self.pos_tag_mapping['unk']
+
+                # get token iob id mapping
+                if iob_tag in self.iob_tag_mapping:
+                    iob_tag_id = self.iob_tag_mapping[iob_tag]
+                else:
+                    iob_tag_id = self.iob_tag_mapping['unk']
+
+                # adjust distance to protein in training max length
                 if distance_to_protein >= self.dataset['training']['max_seq_len']:
                     distance_to_protein = self.dataset['training']['max_seq_len'] - 1
                 elif distance_to_protein <= -self.dataset['training']['max_seq_len']:
                     distance_to_protein = -self.dataset['training']['max_seq_len'] + 1
 
+                # adjust distance to chemical in training max length
                 if distance_to_chemical >= self.dataset['training']['max_seq_len']:
                     distance_to_chemical = self.dataset['training']['max_seq_len'] + 1
                 elif distance_to_chemical <= -self.dataset['training']['max_seq_len']:
                     distance_to_chemical = -self.dataset['training']['max_seq_len'] + 1
 
+                # get distance to protein id mapping
                 distance_to_protein_id = self.pos_to_id[distance_to_protein]
+
+                # get distance to chemical id mapping
                 distance_to_chemical_id = self.pos_to_id[distance_to_chemical]
 
+                # fill the batch data matrices
                 batch_data[(batch_idx % self.batch_size), token_idx] = token_id
                 batch_distance_protein[(batch_idx % self.batch_size), token_idx] = distance_to_protein_id
                 batch_distance_chemical[(batch_idx % self.batch_size), token_idx] = distance_to_chemical_id
+                batch_data_pos_ids[(batch_idx % self.batch_size), token_idx] = pos_id
+                batch_data_iob_ids[(batch_idx % self.batch_size), token_idx] = iob_tag_id
 
         # get batch sequence length
         batch_seq_lens = dataset['seq_lens'][batch_start_idx:batch_end_idx]
@@ -177,9 +233,12 @@ class DataInterface(object):
             batch_data = self.postprocess_data(batch_data)
             batch_distance_protein = self.postprocess_data(batch_distance_protein)
             batch_distance_chemical = self.postprocess_data(batch_distance_chemical)
+            batch_data_pos_ids = self.postprocess_data(batch_data_pos_ids)
+            batch_data_iob_ids = self.postprocess_data(batch_data_iob_ids)
             self.process_seq_length(batch_seq_lens)
 
-        return batch_data, batch_labels, batch_seq_lens, batch_distance_protein, batch_distance_chemical
+        return batch_data, batch_data_pos_ids, batch_data_iob_ids, \
+               batch_labels, batch_seq_lens, batch_distance_protein, batch_distance_chemical
 
     def postprocess_data(self, data):
         training_max_length = self.dataset['training']['max_seq_len']
@@ -277,15 +336,31 @@ class DataInterface(object):
             else:
                 first_entity_type = 'gene'
         trim = instance_text.strip()
+
         if sentence_trim == 'part':
-            tokenized_sent = nltk.word_tokenize(trim)
+            # tokenized_sent = nltk.word_tokenize(trim)
+            tmp = nltk.pos_tag(nltk.word_tokenize(trim))
+            grammar = "NP: {<DT>?<JJ>*<NN>}"
+            cp = nltk.RegexpParser(grammar)
+            with redirect_stdout(open(os.devnull, "w")):
+                result = cp.parse(tmp)
+            tmp = nltk.tree2conlltags(result)
+
+            # tmp = nltk.pos_tag(tokenized_sent)
+            tokenized_words_str = [x[0] for x in tmp]
+            tokenized_pos_tags_str = [x[1] for x in tmp]
+            tokenized_iob_tags_str = [x[2] for x in tmp]
+
             if first_entity_type == 'chemical':
                 chemical_location = 0
-                protein_location = len(tokenized_sent) - 1
+                protein_location = len(tmp) - 1
             else:
-                chemical_location = len(tokenized_sent) - 1
+                chemical_location = len(tmp) - 1
                 protein_location = 0
-            return protein_location, chemical_location, tokenized_sent
+
+            return protein_location, chemical_location, tokenized_words_str, \
+                tokenized_pos_tags_str, tokenized_iob_tags_str
+
         elif sentence_trim == 'e_part':
             sentence_begin = sentence[0:trim_start_idx]
             sentence_end = sentence[trim_end_idx:len(sentence)]

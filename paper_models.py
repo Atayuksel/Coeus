@@ -15,18 +15,24 @@ def lazy_property(function):
     return decorator
 
 class KimCNN:
-    def __init__(self, data, target, distance_protein, distance_chemical, embedding_placeholder, hidden_unit_size,
-                 filter_size, embedding_size, vocabulary_size, learning_rate, position_embedding_size, max_position_distance):
+    def __init__(self, data, target, data_pos_tags, distance_protein, distance_chemical, embedding_placeholder,
+                 hidden_unit_size, filter_size, embedding_size, vocabulary_size, learning_rate, position_embedding_size,
+                 pos_tag_embedding_size,
+                 max_position_distance):
 
         self.data = data
         self.target = target
         self.distance_to_protein = distance_protein
         self.distance_to_chemical = distance_chemical
+        self.pos_tags = data_pos_tags
 
         self.embeddingph = embedding_placeholder
         self.embeddingph_size = self.embeddingph.get_shape()[0].value
 
         self.position_embedding_size = position_embedding_size
+        self.pos_tag_embedding_size = pos_tag_embedding_size
+        self.pos_tag_size = data_pos_tags.get_shape()[0].value
+
         self.filter_size = filter_size
         self.hidden_unit_size = hidden_unit_size
         self.learning_rate = learning_rate
@@ -42,13 +48,16 @@ class KimCNN:
         # network variables (weights, biases, embeddings)
         self.weights = {
             # 1st convolution layer weights
-            'fc1': tf.Variable(tf.random_normal([2, embedding_size+2*self.position_embedding_size,
+            'fc1': tf.Variable(tf.random_normal([2, embedding_size+2*self.position_embedding_size+
+                                                 self.pos_tag_embedding_size,
                                                  1, self.filter_size])),
             # 1st convolution layer weights
-            'fc2': tf.Variable(tf.random_normal([3, embedding_size+2*self.position_embedding_size,
+            'fc2': tf.Variable(tf.random_normal([3, embedding_size+2*self.position_embedding_size+
+                                                 self.pos_tag_embedding_size,
                                                  1, self.filter_size])),
             # 1st convolution layer weights
-            'fc3': tf.Variable(tf.random_normal([4, embedding_size+2*self.position_embedding_size,
+            'fc3': tf.Variable(tf.random_normal([4, embedding_size+2*self.position_embedding_size+
+                                                 self.pos_tag_embedding_size,
                                                  1, self.filter_size])),
             # perceptron layer weights
             'wd1': tf.Variable(tf.random_normal([fc_input_size, self.hidden_unit_size])),
@@ -63,6 +72,7 @@ class KimCNN:
             'bd1': tf.Variable(tf.random_normal([hidden_unit_size])),
             'out': tf.Variable(tf.random_normal([self.target_size]))
         }
+
         # with tf.device('/cpu:0'):
         self.embedding_v_1 = tf.Variable(tf.zeros([self.embeddingph_size, self.embedding_size]),
                                          trainable=True,
@@ -72,7 +82,6 @@ class KimCNN:
                                          trainable=True,
                                          name="word_embedding_variable2",
                                          dtype=tf.float32)
-
         self.embedding_v_3 = tf.Variable(tf.zeros([self.embeddingph_size, self.embedding_size]),
                                          trainable=True,
                                          name="word_embedding_variable3",
@@ -106,6 +115,10 @@ class KimCNN:
                                                       trainable=True,
                                                       name="protein_distance_variable",
                                                       dtype=tf.float32)
+        self.pos_tag_embedding = tf.Variable(tf.random_normal([self.pos_tag_size, self.pos_tag_embedding_size]),
+                                             trainable=True,
+                                             name="protein_distance_variable",
+                                             dtype=tf.float32)
 
         self.assign1
         self.assign2
@@ -193,7 +206,13 @@ class KimCNN:
         chemical_distance_data = tf.reshape(chemical_distance_embedding,
                                             [self.batch_size, self.max_seq_len, self.position_embedding_size, 1])
 
-        data = tf.concat([data, protein_distance_data, chemical_distance_data], 2)
+        pos_tag_embedding = tf.nn.embedding_lookup(params=self.pos_tag_embedding,
+                                                   ids=self.pos_tags)
+
+        pos_tag_data = tf.reshape(pos_tag_embedding,
+                                  [self.batch_size, self.max_seq_len, self.pos_tag_embedding_size, 1])
+
+        data = tf.concat([data, protein_distance_data, chemical_distance_data, pos_tag_data], 2)
 
         # 1st convolution layer
         conv1 = self.conv2d(data, self.weights['fc1'], self.biases['bc1'])

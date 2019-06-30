@@ -3,10 +3,17 @@ import configparser
 import os
 import time
 
-range_hidden_unit = [2048, 4096]
-range_learning_rate = [0.001]
-range_filter_size = [150, 200, 250, 300, 350]
-position_embedding_size = [10, 20, 50, 100]
+# range_hidden_unit = [256, 512, 1024]
+
+# range_learning_rate = [0.001, 0.01]
+# range_lstm_hidden_unit = [128, 256, 512]
+
+position_embedding_size = [10, 20]
+pos_tag_embedding_size = [10, 20, 50]
+iob_tag_embedding_size = [10, 20, 50]
+kim_filter_size = [150, 200, 250, 300]
+
+# range_filter_size = [150, 200, 250, 300, 350]
 
 # range_batch_size = [50]
 # range_num_epoch = [30]
@@ -27,8 +34,9 @@ position_embedding_size = [10, 20, 50, 100]
 #                   range_conv_filter_stride_height, range_conv_filter_stride_width,
 #                   range_pooling_filter_size_height, range_pooling_filter_size_width]
 
-parameter_list = [range_hidden_unit, range_learning_rate, range_filter_size, position_embedding_size]
+# parameter_list = [range_hidden_unit, range_learning_rate, range_filter_size, position_embedding_size]
 
+parameter_list = [kim_filter_size, position_embedding_size, pos_tag_embedding_size, iob_tag_embedding_size]
 
 parameter_combinations = list(itertools.product(*parameter_list))
 num_parameters = len(parameter_combinations)
@@ -44,17 +52,20 @@ num_parameters = len(parameter_combinations)
 config_parameter = configparser.ConfigParser()
 config_parameter.read('config.ini')
 config_parameter.set("HYPERPARAMETERS", "run_type", "grid_search")
-config_parameter.set('HYPERPARAMETERS', 'gridsearch_report_file_name', 'gridsearch_report_3.txt')
+config_parameter.set('HYPERPARAMETERS', 'gridsearch_report_file_name', 'gridsearch_report_cnn_pos_tag_iob_1.txt')
 config_parameter.set('HYPERPARAMETERS', 'model', 'KimCNN')
 
 for parameters in parameter_combinations:
     # write parameters to config.ini file for driver
     # config_parameter.set('HYPERPARAMETERS', 'BATCH_SIZE', str(parameters[0]))
     # config_parameter.set('HYPERPARAMETERS', 'NUM_EPOCH', str(parameters[1]))
-    config_parameter.set('HYPERPARAMETERS', 'num_hidden_unit', str(parameters[0]))
-    config_parameter.set('HYPERPARAMETERS', 'learning_rate', str(parameters[1]))
-    config_parameter.set('HYPERPARAMETERS', 'kim_filterout', str(parameters[2]))
-    config_parameter.set('HYPERPARAMETERS', 'pos_embedding_size', str(parameters[3]))
+    # config_parameter.set('HYPERPARAMETERS', 'num_hidden_unit', str(parameters[0]))
+    # config_parameter.set('HYPERPARAMETERS', 'lstm_hidden_unit', str(parameters[0]))
+    config_parameter.set('HYPERPARAMETERS', 'kim_filterout', str(parameters[0]))
+    config_parameter.set('HYPERPARAMETERS', 'pos_embedding_size', str(parameters[1]))
+    config_parameter.set('HYPERPARAMETERS', 'pos_tag_embedding_size', str(parameters[2]))
+    config_parameter.set('HYPERPARAMETERS', 'iob_embedding_size', str(parameters[3]))
+    # config_parameter.set('HYPERPARAMETERS', 'learning_rate', str(parameters[1]))
     # config_parameter.set('HYPERPARAMETERS', 'EMBEDDING_SIZE', str(parameters[4]))
     # config_parameter.set('HYPERPARAMETERS', 'CONV_FILTER_SIZE_HEIGHT', str(parameters[5]))
     # config_parameter.set('HYPERPARAMETERS', 'CONV_FILTER_SIZE_WIDTH', str(parameters[6]))
