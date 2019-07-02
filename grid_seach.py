@@ -8,10 +8,11 @@ import time
 # range_learning_rate = [0.001, 0.01]
 # range_lstm_hidden_unit = [128, 256, 512]
 
+lstm_hidden_unit = [256]
 position_embedding_size = [10, 20]
-pos_tag_embedding_size = [10, 20, 50]
-iob_tag_embedding_size = [10, 20, 50]
-kim_filter_size = [150, 200, 250, 300]
+pos_tag_embedding_size = [20, 50, 70]
+iob_tag_embedding_size = [20, 50, 70]
+# kim_filter_size = [150, 200, 250, 300]
 
 # range_filter_size = [150, 200, 250, 300, 350]
 
@@ -36,7 +37,7 @@ kim_filter_size = [150, 200, 250, 300]
 
 # parameter_list = [range_hidden_unit, range_learning_rate, range_filter_size, position_embedding_size]
 
-parameter_list = [kim_filter_size, position_embedding_size, pos_tag_embedding_size, iob_tag_embedding_size]
+parameter_list = [lstm_hidden_unit, position_embedding_size, pos_tag_embedding_size, iob_tag_embedding_size]
 
 parameter_combinations = list(itertools.product(*parameter_list))
 num_parameters = len(parameter_combinations)
@@ -51,9 +52,9 @@ num_parameters = len(parameter_combinations)
 
 config_parameter = configparser.ConfigParser()
 config_parameter.read('config.ini')
-config_parameter.set("HYPERPARAMETERS", "run_type", "grid_search")
-config_parameter.set('HYPERPARAMETERS', 'gridsearch_report_file_name', 'gridsearch_report_cnn_pos_tag_iob_1.txt')
-config_parameter.set('HYPERPARAMETERS', 'model', 'KimCNN')
+config_parameter.set("BASE", "run_type", "grid_search")
+config_parameter.set('BASE', 'gridsearch_report_file_name', 'gridsearch_report_bilstm_pos_tag_iob_1.txt')
+config_parameter.set('BASE', 'model_type', 'bilstm')
 
 for parameters in parameter_combinations:
     # write parameters to config.ini file for driver
@@ -61,10 +62,10 @@ for parameters in parameter_combinations:
     # config_parameter.set('HYPERPARAMETERS', 'NUM_EPOCH', str(parameters[1]))
     # config_parameter.set('HYPERPARAMETERS', 'num_hidden_unit', str(parameters[0]))
     # config_parameter.set('HYPERPARAMETERS', 'lstm_hidden_unit', str(parameters[0]))
-    config_parameter.set('HYPERPARAMETERS', 'kim_filterout', str(parameters[0]))
-    config_parameter.set('HYPERPARAMETERS', 'pos_embedding_size', str(parameters[1]))
-    config_parameter.set('HYPERPARAMETERS', 'pos_tag_embedding_size', str(parameters[2]))
-    config_parameter.set('HYPERPARAMETERS', 'iob_embedding_size', str(parameters[3]))
+    config_parameter.set('BILSTM', 'lstm_hidden_unit', str(parameters[0]))
+    config_parameter.set('EMBEDDINGS', 'position_embedding_size', str(parameters[1]))
+    config_parameter.set('EMBEDDINGS', 'pos_tag_embedding_size', str(parameters[2]))
+    config_parameter.set('EMBEDDINGS', 'iob_embedding_size', str(parameters[3]))
     # config_parameter.set('HYPERPARAMETERS', 'learning_rate', str(parameters[1]))
     # config_parameter.set('HYPERPARAMETERS', 'EMBEDDING_SIZE', str(parameters[4]))
     # config_parameter.set('HYPERPARAMETERS', 'CONV_FILTER_SIZE_HEIGHT', str(parameters[5]))

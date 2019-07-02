@@ -43,7 +43,7 @@ class KimCNN:
         self.target_size = self.target.get_shape()[1].value
 
         fc_input_size = 3*self.filter_size
-        print("KimCNN model filter out: {}".format(fc_input_size))
+        # print("KimCNN model filter out: {}".format(fc_input_size))
 
         # network variables (weights, biases, embeddings)
         self.weights = {
