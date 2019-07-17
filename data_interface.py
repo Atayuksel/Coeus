@@ -1,21 +1,29 @@
 import bc_dataset
 import nltk
 import numpy as np
+import pickle
 from contextlib import redirect_stdout
 import os
+import sys
 
 
 class DataInterface(object):
+    def __init__(self, dataset_name, embedding_dir, batch_size, text_selection,
+                 binary_relation, model_run_type, cv_training_data_dir, cv_test_data_dir):
 
-    def __init__(self, dataset_name, embedding_dir, batch_size, text_selection, binary_relation):
         self.embedding_dir = embedding_dir
         self.dataset_name = dataset_name
         self.batch_size = batch_size
         self.text_selection = text_selection  # full, part, e_part
         self.binary_relation = binary_relation  # True, False
+        self.run_type = model_run_type
+
+        self.cv_training_data_dir = cv_training_data_dir
+        self.cv_test_data_dir = cv_test_data_dir
 
         self.word_tokenizer = 'NLTK'
         self.embedding_dim = 0
+
         self.dataset = {'training': {'data': [], 'pos_tags': [], 'iob_tags': [], 'labels': [], 'entities': [],
                                      'abstract_ids': [], 'entity_ids': [], 'seq_lens': [], 'false_positive': [],
                                      'false_negative': [], 'argument_locations': [], 'max_seq_len': 0, 'batch_idx': 0},
@@ -27,26 +35,52 @@ class DataInterface(object):
                                  'false_negative': [], 'argument_locations': [], 'max_seq_len': 0, 'batch_idx': 0}}
 
         if dataset_name == 'BioCreative':
-            self.bc_dataset = bc_dataset.BioCreativeData(input_root='dataset',
-                                                         output_root='output/bc_dataset',
-                                                         sent_tokenizer='NLTK',
-                                                         binary_label=True)
 
-            dataset_validity = self.check_dataset(self.bc_dataset)
-            self.raw_dataset = self.bc_dataset.dataset
-            self.pos_tag_mapping = {'pad': 0, 'unk': 1}
-            self.iob_tag_mapping = {'pad': 0, 'unk': 1}
+            if self.run_type == 'cv_run':
+                if self.cv_training_data_dir is None or self.cv_test_data_dir is None:
+                    print("Error occurred with cv training data directory or cv test data directory")
+                    sys.exit()
 
-            if dataset_validity:
-                self.parse_dataset(self.dataset['training'], self.raw_dataset[0], self.raw_dataset[1],
+                trainData = pickle.load(open(self.cv_training_data_dir, "rb"))
+                testData = pickle.load(open(self.cv_test_data_dir, "rb"))
+                trainInstance, trainLabel = zip(*trainData)
+                testInstance, testLabel = zip(*testData)
+
+                self.pos_tag_mapping = {'pad': 0, 'unk': 1}
+                self.iob_tag_mapping = {'pad': 0, 'unk': 1}
+
+                self.parse_dataset(self.dataset['training'], trainInstance, trainLabel,
                                    self.text_selection, self.binary_relation, True)
-                self.parse_dataset(self.dataset['development'], self.raw_dataset[2], self.raw_dataset[3],
-                                   self.text_selection, self.binary_relation, False)
-                self.parse_dataset(self.dataset['test'], self.raw_dataset[4], self.raw_dataset[5],
+                self.parse_dataset(self.dataset['test'], testInstance, testLabel,
                                    self.text_selection, self.binary_relation, False)
 
-            self.pos_to_id = self.create_pos_embeddings()
-            self.embeddings, self.word_to_id = self.parse_embedding()
+                self.pos_to_id = self.create_pos_embeddings()
+                self.embeddings, self.word_to_id = self.parse_embedding()
+
+            elif self.run_type == 'single' or self.run_type == 'grid_search':
+                self.bc_dataset = bc_dataset.BioCreativeData(input_root='dataset',
+                                                             output_root='output/bc_dataset',
+                                                             sent_tokenizer='NLTK',
+                                                             binary_label=True)
+
+                dataset_validity = self.check_dataset(self.bc_dataset)
+                self.raw_dataset = self.bc_dataset.dataset
+                self.pos_tag_mapping = {'pad': 0, 'unk': 1}
+                self.iob_tag_mapping = {'pad': 0, 'unk': 1}
+
+                if dataset_validity:
+                    self.parse_dataset(self.dataset['training'], self.raw_dataset[0], self.raw_dataset[1],
+                                       self.text_selection, self.binary_relation, True)
+                    self.parse_dataset(self.dataset['development'], self.raw_dataset[2], self.raw_dataset[3],
+                                       self.text_selection, self.binary_relation, False)
+                    self.parse_dataset(self.dataset['test'], self.raw_dataset[4], self.raw_dataset[5],
+                                       self.text_selection, self.binary_relation, False)
+
+                self.pos_to_id = self.create_pos_embeddings()
+                self.embeddings, self.word_to_id = self.parse_embedding()
+
+            else:
+                print('Error with model run type, valid run types: single, cv_run, grid_search\nEntered Run Type: {}'.format(self.run_type))
 
     def parse_embedding(self):
         embedding_file = open(self.embedding_dir, 'r', encoding='utf-8')
@@ -203,7 +237,7 @@ class DataInterface(object):
 
                 # adjust distance to chemical in training max length
                 if distance_to_chemical >= self.dataset['training']['max_seq_len']:
-                    distance_to_chemical = self.dataset['training']['max_seq_len'] + 1
+                    distance_to_chemical = self.dataset['training']['max_seq_len'] - 1
                 elif distance_to_chemical <= -self.dataset['training']['max_seq_len']:
                     distance_to_chemical = -self.dataset['training']['max_seq_len'] + 1
 
@@ -309,7 +343,7 @@ class DataInterface(object):
         pos_embedding_size = 50
         dataset = self.dataset['training']
         training_max_seq_len = dataset['max_seq_len']
-        pos_to_id = {0: 0, 'pad':1}
+        pos_to_id = {0: 0, 'pad': 1}
         for i in range(1, training_max_seq_len):
             pos_to_id[i] = len(pos_to_id)
         for i in range(1, training_max_seq_len):
@@ -360,7 +394,6 @@ class DataInterface(object):
 
             return protein_location, chemical_location, tokenized_words_str, \
                 tokenized_pos_tags_str, tokenized_iob_tags_str
-
         elif sentence_trim == 'e_part':
             sentence_begin = sentence[0:trim_start_idx]
             sentence_end = sentence[trim_end_idx:len(sentence)]

@@ -8,6 +8,7 @@ import data_interface as di
 import bilstm_model as bilstm
 import paper_models as papers
 import configparser
+import pickle
 import sys
 
 
@@ -52,6 +53,10 @@ file_open_type = "none"
 if run_type == 'grid_search':
     report_name = config['BASE']['gridsearch_report_file_name']
     file_open_type = "a+"
+elif run_type == 'cv_run':
+    currentDT = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+    report_name = "report_" + str(currentDT) + ".txt"
+    file_open_type = "w+"
 elif run_type == 'single':
     currentDT = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
     report_name = "report_" + str(currentDT) + ".txt"
@@ -122,6 +127,12 @@ elif error_weight == 'weighted':
     report_file.write(line)
     class_weights = tf.constant([[1., 1.]])
 
+development_set_flag = config['BASE']['development_set']
+development_set_flag = True if development_set_flag == 'true' else False
+
+test_set_flag = config['BASE']['test_set']
+test_set_flag = True if test_set_flag == 'true' else False
+
 # EMBEDDINGS
 section_name = 'EMBEDDINGS'
 
@@ -175,6 +186,16 @@ if iob_embedding_flag:
     print(line)
     report_file.write(line)
 
+
+# Cross Validation
+section_name = 'CV'
+cv_train_data_dir = None
+cv_test_data_dir = None
+
+if run_type == 'cv_run':
+    cv_train_data_dir = config[section_name]['cv_training_data_dir']
+    cv_test_data_dir = config[section_name]['cv_test_data_dir']
+
 # DATA INTERFACE
 print("Setting Up Data Interface")
 
@@ -186,8 +207,13 @@ if word_embedding_type == 'biomedical':
     line = "Embedding Directory: {}\n".format(pre_embedding_directory)
     print(line)
     report_file.write(line)
-elif word_embedding_type == 'glove':
-    pre_embedding_directory = 'dataset/glove.6B/glove.6B.' + word_embedding_size + 'd.txt'
+elif word_embedding_type == 'wiki':
+    pre_embedding_directory = 'dataset/wiki_word_vector.txt'
+    line = "Embedding Directory: {}\n".format(pre_embedding_directory)
+    print(line)
+    report_file.write(line)
+elif word_embedding_type == 'test':
+    pre_embedding_directory = 'dataset/test_case_data/test_word_embedding.txt'
     line = "Embedding Directory: {}\n".format(pre_embedding_directory)
     print(line)
     report_file.write(line)
@@ -205,13 +231,15 @@ elif relation_type == 'multiple':
     report_file.write(line)
 
 if pre_embedding_directory != "none" and binary_relation != "none":
-
     # create data interface object
     data_interface = di.DataInterface(dataset_name='BioCreative',
                                       embedding_dir=pre_embedding_directory,
                                       batch_size=batch_size,
                                       text_selection=text_selection,
-                                      binary_relation=binary_relation)
+                                      binary_relation=binary_relation,
+                                      model_run_type=run_type,
+                                      cv_training_data_dir=cv_train_data_dir,
+                                      cv_test_data_dir=cv_test_data_dir)
     print("Data Interface is created successfully.")
 
     max_train_seq_length = data_interface.dataset['training']['max_seq_len']
@@ -221,9 +249,16 @@ if pre_embedding_directory != "none" and binary_relation != "none":
 
     # get embedding matrix and divide it to 8.
     embedding_matrix = data_interface.embeddings
-    embedding_matrices = np.split(embedding_matrix, 8)
     embedding_dimension = embedding_matrix.shape[1]
     vocabulary_size = embedding_matrix.shape[0]
+
+    embedding_chunk_number = 0
+    for i in range(10, 0, -1):
+        if vocabulary_size % i == 0:
+            embedding_chunk_number = i
+            break
+    embedding_matrices = np.split(embedding_matrix, embedding_chunk_number)
+
     max_train_position_distance = len(data_interface.pos_to_id)
 
     # check embedding sizes
@@ -239,14 +274,12 @@ if pre_embedding_directory != "none" and binary_relation != "none":
     dev_num_batch_in_epoch = math.ceil(len(data_interface.dataset['development']['data']) / batch_size)
     # test data
     test_num_batch_in_epoch = math.ceil(len(data_interface.dataset['test']['data']) / batch_size)
-
 else:
     print("Data Interface Error")
     sys.exit()
 
 # TENSORFLOW
 print("Create Tensorflow Placeholders")
-
 # tensorflow placeholder
 data_ph = tf.placeholder(tf.int64, [batch_size, 144], name='data_placeholder')
 seq_lens_ph = tf.placeholder(tf.int64, [batch_size, ], name='sequence_length_placeholder')
@@ -255,8 +288,7 @@ chemical_distance = tf.placeholder(tf.int64, [batch_size, 144], name='distance_c
 data_pos_tags_ph = tf.placeholder(tf.int64, [batch_size, 144], name='data_pos_tags_placeholder')
 data_iob_tags_ph = tf.placeholder(tf.int64, [batch_size, 144], name='data_iob_tags_placeholder')
 labels_ph = tf.placeholder(tf.float32, [batch_size, 2], name='label_placeholder')
-embedding_ph = tf.placeholder(tf.float32, [embedding_matrices[0].shape[0], embedding_dimension],
-                              name='embedding_placeholder')
+embedding_ph = tf.placeholder(tf.float32, [embedding_matrices[0].shape[0], embedding_dimension], name='embedding_placeholder')
 
 # tensorflow models
 print('Creating Tensorflow Model')
@@ -271,6 +303,11 @@ if model_type == "bilstm":
     section_name = 'BILSTM'
     lstm_hidden_unit_size = int(config[section_name]['lstm_hidden_unit'])
     line = "LSTM Hidden Unit Size: {}\n".format(lstm_hidden_unit_size)
+    print(line)
+    report_file.write(line)
+
+    lstm_in_hidden_unit_size = int(config[section_name]['lstm_in_hidden_unit'])
+    line = "LSTM Input FCL Hidden Unit Size: {}\n".format(lstm_in_hidden_unit_size)
     print(line)
     report_file.write(line)
 
@@ -290,10 +327,12 @@ if model_type == "bilstm":
                                data_pos_tags=data_pos_tags_ph,
                                pos_tag_embedding_size=pos_tag_embedding_size,
                                data_iob_tags=data_iob_tags_ph,
-                               iob_tag_embedding_size=iob_embedding_size)
+                               iob_tag_embedding_size=iob_embedding_size,
+                               input_fc_hidden_unit_size=lstm_in_hidden_unit_size,
+                               input_representation=0,
+                               embedding_chunk_size=embedding_chunk_number)
 
     print("{} model is created".format(model_type))
-
 elif model_type == "KimCNN":
     line = "Selected Model: {}".format(model_type)
     print(line)
@@ -325,7 +364,6 @@ elif model_type == "KimCNN":
                           filter_size=cnn_filter_out,
                           data_pos_tags=data_pos_tags_ph,
                           pos_tag_embedding_size=pos_tag_embedding_size)
-
 if model == "none":
     print("Error occurred in Model Creation")
     sys.exit()
@@ -340,22 +378,40 @@ f1_measure = 0
 
 print("TF Model {} is created successfully\n".format(model_type))
 
+# early stopping
+bestModelMeasure = 0
+bestModelIndex = 0
+minEpochLimit = 30
+
+# grid search results
+bestTestFMeasure = 0
+bestTestPrecision = 0
+bestTestRecall = 0
+
 # create a session and run the graph
 with tf.Session() as sess:
     print("TF session is created successfully\n")
+
     # initialize variables
     sess.run(tf.initialize_all_variables())
-    sess.run(model.assign1, feed_dict={embedding_ph: embedding_matrices[0]})
-    sess.run(model.assign2, feed_dict={embedding_ph: embedding_matrices[1]})
-    sess.run(model.assign3, feed_dict={embedding_ph: embedding_matrices[2]})
-    sess.run(model.assign4, feed_dict={embedding_ph: embedding_matrices[3]})
-    sess.run(model.assign5, feed_dict={embedding_ph: embedding_matrices[4]})
-    sess.run(model.assign6, feed_dict={embedding_ph: embedding_matrices[5]})
-    sess.run(model.assign7, feed_dict={embedding_ph: embedding_matrices[6]})
-    sess.run(model.assign8, feed_dict={embedding_ph: embedding_matrices[7]})
+    if embedding_chunk_number > 0:
+        sess.run(model.assign1, feed_dict={embedding_ph: embedding_matrices[0]})
+    if embedding_chunk_number > 1:
+        sess.run(model.assign2, feed_dict={embedding_ph: embedding_matrices[1]})
+    if embedding_chunk_number > 2:
+        sess.run(model.assign3, feed_dict={embedding_ph: embedding_matrices[2]})
+    if embedding_chunk_number > 3:
+        sess.run(model.assign4, feed_dict={embedding_ph: embedding_matrices[3]})
+    if embedding_chunk_number > 4:
+        sess.run(model.assign5, feed_dict={embedding_ph: embedding_matrices[4]})
+    if embedding_chunk_number > 5:
+        sess.run(model.assign6, feed_dict={embedding_ph: embedding_matrices[5]})
+    if embedding_chunk_number > 6:
+        sess.run(model.assign7, feed_dict={embedding_ph: embedding_matrices[6]})
 
     for epoch in range(num_epoch):
-        print("Epoch Number: {}\n".format(str(epoch)))
+
+        print("Epoch Number: {}".format(str(epoch)))
 
         # TRAINING SET OPTIMIZE
         progress_bar = progressbar.ProgressBar(maxval=tra_num_batch_in_epoch,
@@ -419,15 +475,16 @@ with tf.Session() as sess:
             progress_bar.update(progress_bar_counter)
         progress_bar.finish()
         precision, recall, f1_measure = calculate_metrics(fn, fp, positive_labels)
+
         if run_type == "single":
-            print("Training Set Error: {}, Precision:{}, Recall:{}, f1-measure:{}\n".format(epoch, precision, recall,
+            print("Training Set Error: {}, Precision:{}, Recall:{}, f1-measure:{}".format(epoch, precision, recall,
                                                                                             f1_measure))
             report_file.write("Training Set Error: {}, Precision:{}, Recall:{}, f1-measure:{}\n".format(epoch,
                                                                                                         precision,
                                                                                                         recall,
                                                                                                         f1_measure))
         if run_type == "grid_search":
-            print("Training Set Error: {}, Precision:{}, Recall:{}, f1-measure:{}\n".format(epoch, precision, recall,
+            print("Training Set Error: {}, Precision:{}, Recall:{}, f1-measure:{}".format(epoch, precision, recall,
                                                                                             f1_measure))
             report_file.write("Training Set Error: {}, Precision:{}, Recall:{}, f1-measure:{}\n".format(epoch,
                                                                                                         precision,
@@ -435,111 +492,138 @@ with tf.Session() as sess:
                                                                                                         f1_measure))
 
         # DEVELOPMENT SET PREDICT
-        positive_labels = 0
-        fp = 0
-        fn = 0
-        precision = 0
-        recall = 0
-        f1_measure = 0
+        if development_set_flag:
 
-        progress_bar = progressbar.ProgressBar(maxval=dev_num_batch_in_epoch,
-                                               widgets=["Epoch:{} (Development Set Test)".format(epoch),
-                                                        progressbar.Bar('=', '[', ']'),
-                                                        ' ',
-                                                        progressbar.Percentage()])
-        progress_bar_counter = 0
-        progress_bar.start()
-        for batch in range(dev_num_batch_in_epoch):
+            positive_labels = 0
+            fp = 0
+            fn = 0
+            precision = 0
+            recall = 0
+            f1_measure = 0
 
-            batch_data, batch_pos_ids, batch_iob_ids, batch_labels, batch_seq_lens, \
-                batch_protein_distance, batch_chemical_distance = data_interface.get_batch(dataset_type='development')
+            truth_values = []
+            predicted_values = []
 
-            if len(batch_labels) == batch_size:
-                batch_prediction = sess.run(model.prediction, feed_dict={data_ph: batch_data,
-                                                                         data_pos_tags_ph: batch_pos_ids,
-                                                                         labels_ph: batch_labels,
-                                                                         seq_lens_ph: batch_seq_lens,
-                                                                         data_iob_tags_ph: batch_iob_ids,
-                                                                         protein_distance: batch_protein_distance,
-                                                                         chemical_distance: batch_chemical_distance})
+            progress_bar = progressbar.ProgressBar(maxval=dev_num_batch_in_epoch,
+                                                   widgets=["Epoch:{} (Development Set Test)".format(epoch),
+                                                            progressbar.Bar('=', '[', ']'),
+                                                            ' ',
+                                                            progressbar.Percentage()])
+            progress_bar_counter = 0
+            progress_bar.start()
+            for batch in range(dev_num_batch_in_epoch):
 
-                batch_fn, batch_fp, batch_positive = get_metrics(batch_prediction, batch_labels)
-                fn += len(batch_fn)
-                fp += len(batch_fp)
-                positive_labels += batch_positive
-                data_interface.add_false_negative('development', batch_fn)
-                data_interface.add_false_positive('development', batch_fp)
-            progress_bar_counter = progress_bar_counter + 1
-            progress_bar.update(progress_bar_counter)
-        progress_bar.finish()
-        precision, recall, f1_measure = calculate_metrics(fn, fp, positive_labels)
+                batch_data, batch_pos_ids, batch_iob_ids, batch_labels, batch_seq_lens, \
+                    batch_protein_distance, batch_chemical_distance = data_interface.get_batch(dataset_type='development')
 
-        if run_type == "single":
-            print("Development Set Evaluation: Precision:{}, Recall:{}, f1-measure:{}\n".format(precision, recall,
-                                                                                                f1_measure))
-            report_file.write("\nDevelopment Error \nPrecision:{}, Recall:{}, f1-measure:{} \n".format(precision,
-                                                                                                       recall,
-                                                                                                       f1_measure))
-            data_interface.write_results('development')
-        elif run_type == 'grid_search':
-            print("Development Set Evaluation: Precision:{}, Recall:{}, f1-measure:{}\n".format(precision, recall,
-                                                                                                f1_measure))
-            report_file.write("Development Error \nPrecision:{}, Recall:{}, f1-measure:{} \n".format(precision,
-                                                                                                     recall,
-                                                                                                     f1_measure))
+                if len(batch_labels) == batch_size:
+                    batch_prediction = sess.run(model.prediction, feed_dict={data_ph: batch_data,
+                                                                             data_pos_tags_ph: batch_pos_ids,
+                                                                             labels_ph: batch_labels,
+                                                                             seq_lens_ph: batch_seq_lens,
+                                                                             data_iob_tags_ph: batch_iob_ids,
+                                                                             protein_distance: batch_protein_distance,
+                                                                             chemical_distance: batch_chemical_distance})
+
+                    batch_fn, batch_fp, batch_positive = get_metrics(batch_prediction, batch_labels)
+                    fn += len(batch_fn)
+                    fp += len(batch_fp)
+                    positive_labels += batch_positive
+                    data_interface.add_false_negative('development', batch_fn)
+                    data_interface.add_false_positive('development', batch_fp)
+                progress_bar_counter = progress_bar_counter + 1
+                progress_bar.update(progress_bar_counter)
+            progress_bar.finish()
+            precision, recall, f1_measure = calculate_metrics(fn, fp, positive_labels)
+
+            if run_type == "single":
+                print("Development Set Evaluation: Precision:{}, Recall:{}, f1-measure:{}\n".format(precision, recall,
+                                                                                                    f1_measure))
+                report_file.write("\nDevelopment Error \nPrecision:{}, Recall:{}, f1-measure:{} \n".format(precision,
+                                                                                                           recall,
+                                                                                                           f1_measure))
+                data_interface.write_results('development')
+            elif run_type == 'grid_search':
+                print("Development Set Evaluation: Precision:{}, Recall:{}, f1-measure:{}\n".format(precision, recall,
+                                                                                                    f1_measure))
+                report_file.write("Development Error \nPrecision:{}, Recall:{}, f1-measure:{} \n".format(precision,
+                                                                                                         recall,
+                                                                                                         f1_measure))
+            if f1_measure > bestTestFMeasure:
+                bestTestFMeasure = f1_measure
+                bestTestPrecision = precision
+                bestTestRecall = recall
+                bestModelIndex = epoch
+                pickle.dump(truth_values, open("test_set_truth_values.pkl", "wb"))
+                pickle.dump(predicted_values, open("test_set_predicted_values.pkl", "wb"))
+                print("Best Performance")
+            else:
+                if bestModelIndex*2 < epoch and epoch > minEpochLimit:
+                    print("Best Measure Epoch: {}".format(epoch))
+                    print("Best Precision: {}, Recall: {}, f1-measure:{}".format(bestTestPrecision, bestTestRecall, bestTestFMeasure))
+                    break
 
         # TEST SET PREDICTION
-        positive_labels = 0
-        fp = 0
-        fn = 0
-        precision = 0
-        recall = 0
-        f1_measure = 0
+        if test_set_flag:
+            positive_labels = 0
+            fp = 0
+            fn = 0
+            precision = 0
+            recall = 0
+            f1_measure = 0
 
-        progress_bar = progressbar.ProgressBar(maxval=test_num_batch_in_epoch,
-                                               widgets=["Epoch:{} (Development Set Test)".format(epoch),
-                                                        progressbar.Bar('=', '[', ']'),
-                                                        ' ',
-                                                        progressbar.Percentage()])
-        progress_bar_counter = 0
-        progress_bar.start()
-        for batch in range(test_num_batch_in_epoch):
+            progress_bar = progressbar.ProgressBar(maxval=test_num_batch_in_epoch,
+                                                   widgets=["Epoch:{} (Development Set Test)".format(epoch),
+                                                            progressbar.Bar('=', '[', ']'),
+                                                            ' ',
+                                                            progressbar.Percentage()])
+            progress_bar_counter = 0
+            progress_bar.start()
+            for batch in range(test_num_batch_in_epoch):
 
-            batch_data, batch_pos_ids, batch_iob_ids, batch_labels, batch_seq_lens, \
-                batch_protein_distance, batch_chemical_distance = data_interface.get_batch(dataset_type='test')
+                batch_data, batch_pos_ids, batch_iob_ids, batch_labels, batch_seq_lens, \
+                    batch_protein_distance, batch_chemical_distance = data_interface.get_batch(dataset_type='test')
 
-            if len(batch_labels) == batch_size:
-                batch_prediction = sess.run(model.prediction, feed_dict={data_ph: batch_data,
-                                                                         data_pos_tags_ph: batch_pos_ids,
-                                                                         labels_ph: batch_labels,
-                                                                         seq_lens_ph: batch_seq_lens,
-                                                                         data_iob_tags_ph: batch_iob_ids,
-                                                                         protein_distance: batch_protein_distance,
-                                                                         chemical_distance: batch_chemical_distance})
+                if len(batch_labels) == batch_size:
 
-                batch_fn, batch_fp, batch_positive = get_metrics(batch_prediction, batch_labels)
-                fn += len(batch_fn)
-                fp += len(batch_fp)
-                positive_labels += batch_positive
-                data_interface.add_false_negative('test', batch_fn)
-                data_interface.add_false_positive('test', batch_fp)
-            progress_bar_counter = progress_bar_counter + 1
-            progress_bar.update(progress_bar_counter)
-        progress_bar.finish()
-        precision, recall, f1_measure = calculate_metrics(fn, fp, positive_labels)
+                    for val in batch_labels:
+                        truth_values.append(val)
 
-        if run_type == "single":
-            print("Test Set Evaluation: Precision:{}, Recall:{}, f1-measure:{}\n".format(precision, recall,
-                                                                                         f1_measure))
-            report_file.write("\nDevelopment Error \nPrecision:{}, Recall:{}, f1-measure:{} \n".format(precision,
-                                                                                                       recall,
-                                                                                                       f1_measure))
-            data_interface.write_results('development')
-        elif run_type == 'grid_search':
-            print("Test Set Evaluation: Precision:{}, Recall:{}, f1-measure:{}\n".format(precision, recall,
-                                                                                         f1_measure))
-            report_file.write("Development Error \nPrecision:{}, Recall:{}, f1-measure:{} \n".format(precision,
-                                                                                                     recall,
-                                                                                                     f1_measure))
+                    batch_prediction = sess.run(model.prediction, feed_dict={data_ph: batch_data,
+                                                                             data_pos_tags_ph: batch_pos_ids,
+                                                                             labels_ph: batch_labels,
+                                                                             seq_lens_ph: batch_seq_lens,
+                                                                             data_iob_tags_ph: batch_iob_ids,
+                                                                             protein_distance: batch_protein_distance,
+                                                                             chemical_distance: batch_chemical_distance})
+                    for val in batch_prediction:
+                        predicted_values.append(val)
 
+                    batch_fn, batch_fp, batch_positive = get_metrics(batch_prediction, batch_labels)
+                    fn += len(batch_fn)
+                    fp += len(batch_fp)
+                    positive_labels += batch_positive
+                    data_interface.add_false_negative('test', batch_fn)
+                    data_interface.add_false_positive('test', batch_fp)
+                progress_bar_counter = progress_bar_counter + 1
+                progress_bar.update(progress_bar_counter)
+            progress_bar.finish()
+            precision, recall, f1_measure = calculate_metrics(fn, fp, positive_labels)
+
+            if run_type == "single":
+                print("Test Set Evaluation: Precision:{}, Recall:{}, f1-measure:{}".format(precision, recall,
+                                                                                             f1_measure))
+                report_file.write("\nTest Error \nPrecision:{}, Recall:{}, f1-measure:{} \n".format(precision,
+                                                                                                           recall,
+                                                                                                           f1_measure))
+                data_interface.write_results('test')
+            elif run_type == 'grid_search':
+                print("Test Set Evaluation: Precision:{}, Recall:{}, f1-measure:{}".format(precision, recall,
+                                                                                             f1_measure))
+                report_file.write("Test Error \nPrecision:{}, Recall:{}, f1-measure:{} \n".format(precision,
+                                                                                                         recall,
+                                                                                                         f1_measure))
+
+print("Best Measure Epoch: {}".format(epoch))
+print("Best Precision: {}, Recall: {}, f1-measure:{}".format(bestTestPrecision, bestTestRecall, bestTestFMeasure))
 report_file.close()
