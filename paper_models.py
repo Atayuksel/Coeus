@@ -49,16 +49,13 @@ class KimCNN:
         # network variables (weights, biases, embeddings)
         self.weights = {
             # 1st convolution layer weights
-            'fc1': tf.Variable(tf.random_normal([2, embedding_size+2*self.position_embedding_size+
-                                                 self.pos_tag_embedding_size,
+            'fc1': tf.Variable(tf.random_normal([2, embedding_size+2*self.position_embedding_size,
                                                  1, self.filter_size])),
             # 1st convolution layer weights
-            'fc2': tf.Variable(tf.random_normal([3, embedding_size+2*self.position_embedding_size+
-                                                 self.pos_tag_embedding_size,
+            'fc2': tf.Variable(tf.random_normal([3, embedding_size+2*self.position_embedding_size,
                                                  1, self.filter_size])),
             # 1st convolution layer weights
-            'fc3': tf.Variable(tf.random_normal([4, embedding_size+2*self.position_embedding_size+
-                                                 self.pos_tag_embedding_size,
+            'fc3': tf.Variable(tf.random_normal([4, embedding_size+2*self.position_embedding_size,
                                                  1, self.filter_size])),
             # perceptron layer weights
             'wd1': tf.Variable(tf.random_normal([fc_input_size, self.hidden_unit_size])),
@@ -99,14 +96,14 @@ class KimCNN:
                                          trainable=True,
                                          name="word_embedding_variable6",
                                          dtype=tf.float32)
-        self.embedding_v_7 = tf.Variable(tf.zeros([self.embeddingph_size, self.embedding_size]),
-                                         trainable=True,
-                                         name="word_embedding_variable7",
-                                         dtype=tf.float32)
-        self.embedding_v_8 = tf.Variable(tf.zeros([self.embeddingph_size, self.embedding_size]),
-                                         trainable=True,
-                                         name="word_embedding_variable8",
-                                         dtype=tf.float32)
+        # self.embedding_v_7 = tf.Variable(tf.zeros([self.embeddingph_size, self.embedding_size]),
+        #                                  trainable=True,
+        #                                  name="word_embedding_variable7",
+        #                                  dtype=tf.float32)
+        # self.embedding_v_8 = tf.Variable(tf.zeros([self.embeddingph_size, self.embedding_size]),
+        #                                  trainable=True,
+        #                                  name="word_embedding_variable8",
+        #                                  dtype=tf.float32)
 
         self.distance_chemical_embedding = tf.Variable(tf.random_normal([max_position_distance, self.position_embedding_size]),
                                                        trainable=True,
@@ -127,8 +124,8 @@ class KimCNN:
         self.assign4
         self.assign5
         self.assign6
-        self.assign7
-        self.assign8
+        # self.assign7
+        # self.assign8
 
         self.prediction
         self.optimize
@@ -174,16 +171,16 @@ class KimCNN:
     def assign6(self):
         word_embedding_init6 = self.embedding_v_6.assign(self.embeddingph)
         return word_embedding_init6
-
-    @lazy_property
-    def assign7(self):
-        word_embedding_init7 = self.embedding_v_7.assign(self.embeddingph)
-        return word_embedding_init7
-
-    @lazy_property
-    def assign8(self):
-        word_embedding_init8 = self.embedding_v_8.assign(self.embeddingph)
-        return word_embedding_init8
+    #
+    # @lazy_property
+    # def assign7(self):
+    #     word_embedding_init7 = self.embedding_v_7.assign(self.embeddingph)
+    #     return word_embedding_init7
+    #
+    # @lazy_property
+    # def assign8(self):
+    #     word_embedding_init8 = self.embedding_v_8.assign(self.embeddingph)
+    #     return word_embedding_init8
 
     @lazy_property
     def prediction(self):
@@ -213,7 +210,7 @@ class KimCNN:
         pos_tag_data = tf.reshape(pos_tag_embedding,
                                   [self.batch_size, self.max_seq_len, self.pos_tag_embedding_size, 1])
 
-        data = tf.concat([data, protein_distance_data, chemical_distance_data, pos_tag_data], 2)
+        data = tf.concat([data, protein_distance_data, chemical_distance_data], 2)
 
         # 1st convolution layer
         conv1 = self.conv2d(data, self.weights['fc1'], self.biases['bc1'])

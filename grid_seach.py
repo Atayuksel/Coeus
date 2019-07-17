@@ -2,81 +2,108 @@ import itertools
 import configparser
 import os
 import time
+import pickle
+import numpy as np
 
-# range_hidden_unit = [256, 512, 1024]
 
-# range_learning_rate = [0.001, 0.01]
-# range_lstm_hidden_unit = [128, 256, 512]
+def compare_models(true_values, classifier0, classifier1):
+    contingencyTable = np.zeros((2, 2))
+    classifier0Table = np.zeros((2, 2))
+    classifier1Table = np.zeros((2, 2))
 
-lstm_hidden_unit = [256]
-position_embedding_size = [10, 20]
-pos_tag_embedding_size = [20, 50, 70]
-iob_tag_embedding_size = [20, 50, 70]
-# kim_filter_size = [150, 200, 250, 300]
+    for i in range(len(true_values)):
+        true_value = true_values[i]
+        classifier0_value = classifier0[i]
+        classifier1_value = classifier1[i]
+        if true_value == classifier0_value:
+            if true_value == classifier1_value:
+                contingencyTable[0][0] = contingencyTable[0][0] + 1
+            else:
+                contingencyTable[0][1] = contingencyTable[0][1] + 1
+        else:
+            if true_value == classifier1_value:
+                contingencyTable[1][0] = contingencyTable[1][0] + 1
+            else:
+                contingencyTable[1][1] = contingencyTable[1][1] + 1
 
-# range_filter_size = [150, 200, 250, 300, 350]
+        if true_value == 0:
+            if classifier0_value == 0:
+                classifier0Table[1][1] = classifier0Table[1][1] + 1
+            else:
+                classifier0Table[1][0] = classifier0Table[1][0] + 1
 
-# range_batch_size = [50]
-# range_num_epoch = [30]
-# range_embedding_size = [100, 300]
-# range_conv_filter_size_height = [2, 4]
-# range_conv_filter_size_width = [10, 50]
-# range_conv_filter_out_1 = [64, 128]
-# range_conv_filter_out_2 = [64, 128]
-# range_conv_filter_out_3 = [64, 128]
-# range_conv_filter_stride_height = [1]
-# range_conv_filter_stride_width = [1]
-# range_pooling_filter_size_height = [2, 4]
-# range_pooling_filter_size_width = [2, 4]
+            if classifier1_value == 0:
+                classifier1Table[1][1] = classifier1Table[1][1] + 1
+            else:
+                classifier1Table[1][0] = classifier1Table[1][0] + 1
+        else:
+            if classifier0_value == 0:
+                classifier0Table[0][1] = classifier0Table[0][1] + 1
+            else:
+                classifier0Table[0][0] = classifier0Table[0][0] + 1
 
-# parameter_list = [range_batch_size, range_num_epoch, range_hidden_unit, range_learning_rate, range_embedding_size,
-#                   range_conv_filter_size_height, range_conv_filter_size_width,
-#                   range_conv_filter_out_1, range_conv_filter_out_2, range_conv_filter_out_3,
-#                   range_conv_filter_stride_height, range_conv_filter_stride_width,
-#                   range_pooling_filter_size_height, range_pooling_filter_size_width]
+            if classifier1_value == 0:
+                classifier1Table[0][1] = classifier1Table[0][1] + 1
+            else:
+                classifier1Table[0][0] = classifier1Table[0][0] + 1
 
-# parameter_list = [range_hidden_unit, range_learning_rate, range_filter_size, position_embedding_size]
+    classifier0_precision = classifier0Table[0][0] / (classifier0Table[0][0] + classifier0Table[1][0])
+    classifier0_recall = classifier0Table[0][0] / (classifier0Table[0][0] + classifier0Table[0][1])
+    classifier0_measure = 2 * ((classifier0_precision * classifier0_recall) / (classifier0_precision + classifier0_recall))
 
-parameter_list = [lstm_hidden_unit, position_embedding_size, pos_tag_embedding_size, iob_tag_embedding_size]
+    classifier1_precision = classifier1Table[0][0] / (classifier1Table[0][0] + classifier1Table[1][0])
+    classifier1_recall = classifier1Table[0][0] / (classifier1Table[0][0] + classifier1Table[0][1])
+    classifier1_measure = 2 * ((classifier1_precision * classifier1_recall) / (classifier1_precision + classifier1_recall))
+
+    statistic = (contingencyTable[0][1] - contingencyTable[1][0]) ** 2 / (contingencyTable[0][1] + contingencyTable[0][1])
+    alpha = 0.05
+    if statistic <= alpha:
+        if classifier1_measure > classifier0_measure:
+            return 1
+        else:
+            return 0
+    else:
+        return 0
+
+
+# read grid search space
+gss_file = open('grid_search_values.txt', 'r')
+gss_lines = gss_file.readlines()
+
+gs_map = []
+for line in gss_lines:
+    gs_parameter = line.split()
+    label = gs_parameter[:2]
+    space = gs_parameter[2:]
+    gs_map.append(list((label, space)))
+
+parameter_list = []
+for item in gs_map:
+    label = item[0]
+    space = item[1]
+    parameter_list.append(space)
 
 parameter_combinations = list(itertools.product(*parameter_list))
 num_parameters = len(parameter_combinations)
-# filtered_parameter_combinations = []
-# for combination in parameter_combinations:
-#     conv_filter_out_1 = combination[7]
-#     conv_filter_out_2 = combination[8]
-#     conv_filter_out_3 = combination[9]
-#     if conv_filter_out_1 <= conv_filter_out_2 <= conv_filter_out_3:
-#         filtered_parameter_combinations.append(combination)
-# filtered_num_parameters = len(filtered_parameter_combinations)
 
 config_parameter = configparser.ConfigParser()
 config_parameter.read('config.ini')
 config_parameter.set("BASE", "run_type", "grid_search")
-config_parameter.set('BASE', 'gridsearch_report_file_name', 'gridsearch_report_bilstm_pos_tag_iob_1.txt')
 config_parameter.set('BASE', 'model_type', 'bilstm')
+config_parameter.set('BASE', 'development_set', 'true')
+config_parameter.set('BASE', 'test_set', 'false')
+config_parameter.set('BASE', 'gridsearch_report_file_name', 'test_case_grid_search_results_1.txt')
+
+startFlag = True
+bestParameters = []
+truthLabels = []
+bestPredictedValues = []
 
 for parameters in parameter_combinations:
+
     # write parameters to config.ini file for driver
-    # config_parameter.set('HYPERPARAMETERS', 'BATCH_SIZE', str(parameters[0]))
-    # config_parameter.set('HYPERPARAMETERS', 'NUM_EPOCH', str(parameters[1]))
-    # config_parameter.set('HYPERPARAMETERS', 'num_hidden_unit', str(parameters[0]))
-    # config_parameter.set('HYPERPARAMETERS', 'lstm_hidden_unit', str(parameters[0]))
-    config_parameter.set('BILSTM', 'lstm_hidden_unit', str(parameters[0]))
-    config_parameter.set('EMBEDDINGS', 'position_embedding_size', str(parameters[1]))
-    config_parameter.set('EMBEDDINGS', 'pos_tag_embedding_size', str(parameters[2]))
-    config_parameter.set('EMBEDDINGS', 'iob_embedding_size', str(parameters[3]))
-    # config_parameter.set('HYPERPARAMETERS', 'learning_rate', str(parameters[1]))
-    # config_parameter.set('HYPERPARAMETERS', 'EMBEDDING_SIZE', str(parameters[4]))
-    # config_parameter.set('HYPERPARAMETERS', 'CONV_FILTER_SIZE_HEIGHT', str(parameters[5]))
-    # config_parameter.set('HYPERPARAMETERS', 'CONV_FILTER_SIZE_WIDTH', str(parameters[6]))
-    # config_parameter.set('HYPERPARAMETERS', 'CONV_FILTER_OUT_1', str(parameters[7]))
-    # config_parameter.set('HYPERPARAMETERS', 'CONV_FILTER_OUT_2', str(parameters[8]))
-    # config_parameter.set('HYPERPARAMETERS', 'CONV_FILTER_OUT_3', str(parameters[9]))
-    # config_parameter.set('HYPERPARAMETERS', 'CONV_FILTER_STRIDE_HEIGHT', str(parameters[10]))
-    # config_parameter.set('HYPERPARAMETERS', 'CONV_FILTER_STRIDE_WIDTH', str(parameters[11]))
-    # config_parameter.set('HYPERPARAMETERS', 'POOLING_FILTER_SIZE_HEIGHT', str(parameters[12]))
-    # config_parameter.set('HYPERPARAMETERS', 'POOLING_FILTER_SIZE_WIDTH', str(parameters[13]))
+    for i in range(len(gs_map)):
+        config_parameter.set(gs_map[i][0][0], gs_map[i][0][1], str(parameters[i]))
 
     # Writing our configuration file to 'example.ini'
     with open("config.ini", 'w') as configfile:
@@ -86,3 +113,18 @@ for parameters in parameter_combinations:
     os.system('{} {}'.format('python3', cmd))
 
     time.sleep(3)
+
+    if startFlag:
+        bestParameters = parameters
+        startFlag = False
+        truthLabels = pickle.load(open("test_set_truth_values.pkl", "rb"))
+        bestPredictedValues = pickle.load(open("test_set_predicted_values.pkl", "rb"))
+    else:
+        currentPredictedValues = pickle.load(open("test_set_predicted_values.pkl", "rb"))
+        compare_flag = compare_models(truthLabels, bestPredictedValues, currentPredictedValues)
+        if compare_flag == 1:
+            bestPredictedValues = currentPredictedValues
+            bestParameters = parameters
+
+    print("Best Model Parameters:")
+    print("{}: {}".format(gs_map[i][0][1], str(parameters[i])))
