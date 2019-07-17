@@ -27,7 +27,7 @@ class DataInterface(object):
                                  'false_negative': [], 'argument_locations': [], 'max_seq_len': 0, 'batch_idx': 0}}
 
         if dataset_name == 'BioCreative':
-            self.bc_dataset = bc_dataset.BioCreativeData(input_root='dataset',
+            self.bc_dataset = bc_dataset.BioCreativeData(input_root=r'C:\Users\Atakan Yuksel\PycharmProjects\Coeus\dataset',
                                                          output_root='output/bc_dataset',
                                                          sent_tokenizer='NLTK',
                                                          binary_label=True)

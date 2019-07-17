@@ -14,6 +14,7 @@ def lazy_property(function):
         return getattr(self, attribute)
     return decorator
 
+
 class KimCNN:
     def __init__(self, data, target, data_pos_tags, distance_protein, distance_chemical, embedding_placeholder,
                  hidden_unit_size, filter_size, embedding_size, vocabulary_size, learning_rate, position_embedding_size,
@@ -248,7 +249,7 @@ class KimCNN:
         unweighted_loss_op = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=self.prediction,
                                                                                        labels=self.target))
         loss = tf.reduce_mean(unweighted_loss_op)
-        optimizer = tf.train.RMSPropOptimizer(learning_rate=self.learning_rate)
+        optimizer = tf.train.AdamOptimizer(learning_rate=self.learning_rate)
         return optimizer.minimize(loss)
 
     @lazy_property

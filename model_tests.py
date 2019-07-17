@@ -13,17 +13,39 @@ def convert_one_hot(data):
         result_data.append(np_label)
     return result_data
 
-imdb = keras.datasets.imdb
-(train_data, train_labels), (test_data, test_labels) = imdb.load_data(num_words=10000)
-print("Training entries: {}, labels: {}".format(len(train_data), len(train_labels)))
-word_index = imdb.get_word_index()
-word_index = {k:(v+3) for k, v in word_index.items()}
-word_index["<PAD>"] = 0
-word_index["<START>"] = 1
-word_index["<UNK>"] = 2
-word_index["<UNUSED>"] = 3
-reverse_word_index = dict([(value, key) for (key, value) in word_index.items()])
+# imdb = keras.datasets.imdb
+# (train_data, train_labels), (test_data, test_labels) = imdb.load_data(num_words=10000)
+# print("Training entries: {}, labels: {}".format(len(train_data), len(train_labels)))
+# word_index = imdb.get_word_index()
+# word_index = {k:(v+3) for k, v in word_index.items()}
+# word_index["<PAD>"] = 0
+# word_index["<START>"] = 1
+# word_index["<UNK>"] = 2
+# word_index["<UNUSED>"] = 3
+# reverse_word_index = dict([(value, key) for (key, value) in word_index.items()])
 
+# read sample text files
+data_set = open("sample/sample_raw_text.txt")
+data_set = data_set.read()
+data_set = data_set.split('\n')
+
+# read word embeddings
+word_embeddings = open("sample/sample_word_embedding.txt")
+embeddings = np.zeros(shape=(7, 3), dtype=float)
+word_index = {}
+
+line = word_embeddings.readline()
+while line:
+    tokens = line.split(' ')
+    word = tokens[0]
+    embedding = tokens[1:]
+    word_index[word] = len(word_index)
+    embeddings[len(word_index):] =
+
+word_embeddings = word_embeddings.split('\n')
+
+
+print("askal;sdk")
 label = convert_one_hot(train_labels)
 vocabulary_size = len(word_index)
 embedding_size = 10

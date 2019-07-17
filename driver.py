@@ -237,8 +237,6 @@ if pre_embedding_directory != "none" and binary_relation != "none":
     tra_num_batch_in_epoch = math.ceil(len(data_interface.dataset['training']['data']) / batch_size)
     # development data
     dev_num_batch_in_epoch = math.ceil(len(data_interface.dataset['development']['data']) / batch_size)
-    # test data
-    test_num_batch_in_epoch = math.ceil(len(data_interface.dataset['test']['data']) / batch_size)
 
 else:
     print("Data Interface Error")
@@ -261,7 +259,6 @@ embedding_ph = tf.placeholder(tf.float32, [embedding_matrices[0].shape[0], embed
 # tensorflow models
 print('Creating Tensorflow Model')
 model = "none"
-
 if model_type == "bilstm":
     line = "Selected Model: {}".format(model_type)
     print(line)
@@ -269,7 +266,7 @@ if model_type == "bilstm":
 
     # obtain bi-lstm specific parameter
     section_name = 'BILSTM'
-    lstm_hidden_unit_size = int(config[section_name]['lstm_hidden_unit'])
+    lstm_hidden_unit_size = config[section_name]['lstm_hidden_unit']
     line = "LSTM Hidden Unit Size: {}\n".format(lstm_hidden_unit_size)
     print(line)
     report_file.write(line)
@@ -291,7 +288,6 @@ if model_type == "bilstm":
                                pos_tag_embedding_size=pos_tag_embedding_size,
                                data_iob_tags=data_iob_tags_ph,
                                iob_tag_embedding_size=iob_embedding_size)
-
     print("{} model is created".format(model_type))
 
 elif model_type == "KimCNN":
@@ -301,12 +297,12 @@ elif model_type == "KimCNN":
 
     # obtain CNN specific parameters
     section_name = "CNN"
-    cnn_filter_out = int(config[section_name]['cnn_filter_out'])
+    cnn_filter_out = config[section_name]['cnn_filter_out']
     line = "CNN Filter Out: {}\n".format(cnn_filter_out)
     print(line)
     report_file.write(line)
 
-    cnn_hidden_unit = int(config[section_name]['cnn_hidden_unit'])
+    cnn_hidden_unit = config[section_name]['cnn_hidden_unit']
     line = "CNN Hidden Unit: {}\n".format(cnn_hidden_unit)
     print(line)
     report_file.write(line)
@@ -325,9 +321,10 @@ elif model_type == "KimCNN":
                           filter_size=cnn_filter_out,
                           data_pos_tags=data_pos_tags_ph,
                           pos_tag_embedding_size=pos_tag_embedding_size)
+    print("{} model is created".format(model_type))
 
 if model == "none":
-    print("Error occurred in Model Creation")
+    print("Tensorflow model can not be created.")
     sys.exit()
 
 # evaluation metrics
@@ -337,8 +334,6 @@ fn = 0
 precision = 0
 recall = 0
 f1_measure = 0
-
-print("TF Model {} is created successfully\n".format(model_type))
 
 # create a session and run the graph
 with tf.Session() as sess:
@@ -487,59 +482,4 @@ with tf.Session() as sess:
             report_file.write("Development Error \nPrecision:{}, Recall:{}, f1-measure:{} \n".format(precision,
                                                                                                      recall,
                                                                                                      f1_measure))
-
-        # TEST SET PREDICTION
-        positive_labels = 0
-        fp = 0
-        fn = 0
-        precision = 0
-        recall = 0
-        f1_measure = 0
-
-        progress_bar = progressbar.ProgressBar(maxval=test_num_batch_in_epoch,
-                                               widgets=["Epoch:{} (Development Set Test)".format(epoch),
-                                                        progressbar.Bar('=', '[', ']'),
-                                                        ' ',
-                                                        progressbar.Percentage()])
-        progress_bar_counter = 0
-        progress_bar.start()
-        for batch in range(test_num_batch_in_epoch):
-
-            batch_data, batch_pos_ids, batch_iob_ids, batch_labels, batch_seq_lens, \
-                batch_protein_distance, batch_chemical_distance = data_interface.get_batch(dataset_type='test')
-
-            if len(batch_labels) == batch_size:
-                batch_prediction = sess.run(model.prediction, feed_dict={data_ph: batch_data,
-                                                                         data_pos_tags_ph: batch_pos_ids,
-                                                                         labels_ph: batch_labels,
-                                                                         seq_lens_ph: batch_seq_lens,
-                                                                         data_iob_tags_ph: batch_iob_ids,
-                                                                         protein_distance: batch_protein_distance,
-                                                                         chemical_distance: batch_chemical_distance})
-
-                batch_fn, batch_fp, batch_positive = get_metrics(batch_prediction, batch_labels)
-                fn += len(batch_fn)
-                fp += len(batch_fp)
-                positive_labels += batch_positive
-                data_interface.add_false_negative('test', batch_fn)
-                data_interface.add_false_positive('test', batch_fp)
-            progress_bar_counter = progress_bar_counter + 1
-            progress_bar.update(progress_bar_counter)
-        progress_bar.finish()
-        precision, recall, f1_measure = calculate_metrics(fn, fp, positive_labels)
-
-        if run_type == "single":
-            print("Test Set Evaluation: Precision:{}, Recall:{}, f1-measure:{}\n".format(precision, recall,
-                                                                                         f1_measure))
-            report_file.write("\nDevelopment Error \nPrecision:{}, Recall:{}, f1-measure:{} \n".format(precision,
-                                                                                                       recall,
-                                                                                                       f1_measure))
-            data_interface.write_results('development')
-        elif run_type == 'grid_search':
-            print("Test Set Evaluation: Precision:{}, Recall:{}, f1-measure:{}\n".format(precision, recall,
-                                                                                         f1_measure))
-            report_file.write("Development Error \nPrecision:{}, Recall:{}, f1-measure:{} \n".format(precision,
-                                                                                                     recall,
-                                                                                                     f1_measure))
-
 report_file.close()
