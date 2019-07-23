@@ -247,7 +247,7 @@ if pre_embedding_directory != "none" and binary_relation != "none":
     print(line)
     report_file.write(line)
 
-    # get embedding matrix and divide it to 8.
+    # get embedding matrix and divide it.
     embedding_matrix = data_interface.embeddings
     embedding_dimension = embedding_matrix.shape[1]
     vocabulary_size = embedding_matrix.shape[0]
