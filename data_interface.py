@@ -1,29 +1,61 @@
-import bc_dataset
+import dataset
 import nltk
 import numpy as np
 import pickle
 from contextlib import redirect_stdout
 import os
 import sys
+import configparser
+import progressbar
 
 
 class DataInterface(object):
-    def __init__(self, dataset_name, embedding_dir, batch_size, text_selection,
-                 binary_relation, model_run_type, cv_training_data_dir, cv_test_data_dir):
+    def __init__(self):
 
-        self.embedding_dir = embedding_dir
-        self.dataset_name = dataset_name
-        self.batch_size = batch_size
-        self.text_selection = text_selection  # full, part, e_part
-        self.binary_relation = binary_relation  # True, False
-        self.run_type = model_run_type
+        # read parameters from configuration file config.init
+        # create config file
+        config = configparser.ConfigParser()
+        config.read('config.ini')
 
-        self.cv_training_data_dir = cv_training_data_dir
-        self.cv_test_data_dir = cv_test_data_dir
+        # read interface parameters
+        section_name = 'INTERFACE'
+        self.batch_size = int(config[section_name]['batch_size'])
+        self.text_selection = config[section_name]['text_selection']
+        self.relation_type = config[section_name]['relation_type']
+        self.dataset_source = config[section_name]['dataset_source']
+        self.root_directory = config[section_name]['root_directory']
+        self.word_tokenizer = config[section_name]['word_tokenizer']
+        self.word_embedding_dir = config[section_name]['word_embedding_dir']
 
-        self.word_tokenizer = 'NLTK'
-        self.embedding_dim = 0
+        # read embedding parameters
+        # word embedding
+        section_name = 'EMBEDDINGS'
 
+        # position embedding
+        self.position_embedding_flag = config[section_name]['position_embedding_flag']
+        self.position_embedding_dir = config[section_name]['position_embedding_dir']
+        self.position_embedding_flag = True if self.position_embedding_flag == 'true' else False
+        self.position_embedding_size = 0
+        if self.position_embedding_flag:
+            self.position_embedding_size = int(config[section_name]['position_embedding_size'])
+
+        # pos tag embedding
+        self.pos_tag_embedding_flag = config[section_name]['pos_tag_embedding_flag']
+        self.pos_tag_embedding_dir = config[section_name]['pos_tag_embedding_dir']
+        self.pos_tag_embedding_flag = True if self.pos_tag_embedding_flag == 'true' else False
+        self.pos_tag_embedding_size = 0
+        if self.pos_tag_embedding_flag:
+            self.pos_tag_embedding_size = int(config[section_name]['pos_tag_embedding_size'])
+
+        # iob tag embedding
+        self.iob_tag_embedding_flag = config[section_name]['iob_tag_embedding_flag']
+        self.iob_tag_embedding_dir = config[section_name]['iob_tag_embedding_dir']
+        self.iob_tag_embedding_flag = True if self.iob_tag_embedding_flag == 'true' else False
+        self.iob_tag_embedding_size = 0
+        if self.iob_tag_embedding_flag:
+            self.iob_tag_embedding_size = int(config[section_name]['iob_tag_embedding_size'])
+
+        # prepared dataset
         self.dataset = {'training': {'data': [], 'pos_tags': [], 'iob_tags': [], 'labels': [], 'entities': [],
                                      'abstract_ids': [], 'entity_ids': [], 'seq_lens': [], 'false_positive': [],
                                      'false_negative': [], 'argument_locations': [], 'max_seq_len': 0, 'batch_idx': 0},
@@ -34,64 +66,153 @@ class DataInterface(object):
                                  'abstract_ids': [], 'entity_ids': [], 'seq_lens': [], 'false_positive': [],
                                  'false_negative': [], 'argument_locations': [], 'max_seq_len': 0, 'batch_idx': 0}}
 
-        if dataset_name == 'BioCreative':
+        self.raw_dataset = []  # raw relation dataset
 
-            if self.run_type == 'cv_run':
-                if self.cv_training_data_dir is None or self.cv_test_data_dir is None:
-                    print("Error occurred with cv training data directory or cv test data directory")
-                    sys.exit()
+        # load raw dataset
+        if self.dataset_source == 'ready':
+            # check prepared dataset files.
+            pre_training_file_dir = self.root_directory + '/cv_training_data.pkl'
+            pre_dev_file_dir = self.root_directory + '/cv_development_data.pkl'
+            pre_test_file_dir = self.root_directory + '/cv_test_data.pkl'
 
-                trainData = pickle.load(open(self.cv_training_data_dir, "rb"))
-                testData = pickle.load(open(self.cv_test_data_dir, "rb"))
-                trainInstance, trainLabel = zip(*trainData)
-                testInstance, testLabel = zip(*testData)
+            pre_training_file_check = os.path.exists(pre_training_file_dir)
+            pre_dev_file_check = os.path.exists(pre_dev_file_dir)
+            pre_test_file_check = os.path.exists(pre_test_file_dir)
 
-                self.pos_tag_mapping = {'pad': 0, 'unk': 1}
-                self.iob_tag_mapping = {'pad': 0, 'unk': 1}
+            if not pre_training_file_check or not pre_dev_file_check or not pre_test_file_check:
+                print("Error: no prepared data found in root directory: {}".format(self.root_directory))
+                sys.exit()
 
-                self.parse_dataset(self.dataset['training'], trainInstance, trainLabel,
-                                   self.text_selection, self.binary_relation, True)
-                self.parse_dataset(self.dataset['test'], testInstance, testLabel,
-                                   self.text_selection, self.binary_relation, False)
+            # load prepared dataset
+            pre_training_data = pickle.load(open(pre_training_file_dir, "rb"))
+            pre_dev_data = pickle.load(open(pre_dev_file_dir, "rb"))
+            pre_test_data = pickle.load(open(pre_test_file_dir, "rb"))
 
-                self.pos_to_id = self.create_pos_embeddings()
-                self.embeddings, self.word_to_id = self.parse_embedding()
+            # modify pre-trained dataset for data interface.
+            train_instance, train_label = zip(*pre_training_data)
+            dev_instance, dev_label = zip(*pre_dev_data)
+            test_instance, test_label = zip(*pre_test_data)
 
-            elif self.run_type == 'single' or self.run_type == 'grid_search':
-                self.bc_dataset = bc_dataset.BioCreativeData(input_root='dataset',
-                                                             output_root='output/bc_dataset',
-                                                             sent_tokenizer='NLTK',
-                                                             binary_label=True)
+            self.raw_dataset = [train_instance, train_label, dev_instance, dev_label, test_instance, test_label]
+            print('Prepared dataset is loaded successfully.')
 
-                dataset_validity = self.check_dataset(self.bc_dataset)
-                self.raw_dataset = self.bc_dataset.dataset
-                self.pos_tag_mapping = {'pad': 0, 'unk': 1}
-                self.iob_tag_mapping = {'pad': 0, 'unk': 1}
+        elif self.dataset_source == 'biocreative':
 
-                if dataset_validity:
-                    self.parse_dataset(self.dataset['training'], self.raw_dataset[0], self.raw_dataset[1],
-                                       self.text_selection, self.binary_relation, True)
-                    self.parse_dataset(self.dataset['development'], self.raw_dataset[2], self.raw_dataset[3],
-                                       self.text_selection, self.binary_relation, False)
-                    self.parse_dataset(self.dataset['test'], self.raw_dataset[4], self.raw_dataset[5],
-                                       self.text_selection, self.binary_relation, False)
+            biocreative_dataset = dataset.BioCreative(root_directory=self.root_directory,
+                                                      tokenizer=self.word_tokenizer,
+                                                      relation_type=self.relation_type)
+            self.raw_dataset = biocreative_dataset.get_dataset()
+            del biocreative_dataset
 
-                self.pos_to_id = self.create_pos_embeddings()
-                self.embeddings, self.word_to_id = self.parse_embedding()
+            print('Biocreative dataset is loaded successfully.')
 
-            else:
-                print('Error with model run type, valid run types: single, cv_run, grid_search\nEntered Run Type: {}'.format(self.run_type))
+        training_candidate_relations = self.create_candidate_relation(self.raw_dataset[0], 'training')
+        training_labels = self.raw_dataset[1]
+        development_candidate_relations = self.create_candidate_relation(self.raw_dataset[2], 'development')
+        development_labels = self.raw_dataset[3]
+        test_candidate_relations = self.create_candidate_relation(self.raw_dataset[4], 'test')
+        test_labels = self.raw_dataset[5]
 
-    def parse_embedding(self):
-        embedding_file = open(self.embedding_dir, 'r', encoding='utf-8')
-        lines = embedding_file.readlines()
-        embedding_file.close()
+        # create word embeddings
+        print("Start to fetch word embeddings from the file {}".format(self.root_directory + '/' +
+                                                                       self.word_embedding_dir))
+        word_embedding_data = self.create_word_embeddings()
+        self.word_embedding_map = word_embedding_data[0]
+        self.word_embedding_matrix = word_embedding_data[1]
+        self.word_embedding_dimension = word_embedding_data[2]
 
-        word_id_mapping = {'unk': 0, 'pad':1}
-        vocab_size = len(lines)
-        self.embedding_dim = len(lines[0][:-1].split(' ')) - 1
-        embeddings = np.zeros(((vocab_size+2), self.embedding_dim))
-        embeddings[0:1, :] = np.random.rand(1, self.embedding_dim)
+        # create position embeddings
+        if self.position_embedding_flag:
+            if self.position_embedding_dir == '':
+                print('Position Embedding is selected with size {}'.format(self.position_embedding_size))
+                self.position_embedding_map = self.create_position_embeddings(training_candidate_relations)
+                mu, sigma = 0, 0.1
+                self.position_embedding_matrix = np.random.normal(mu, sigma, [len(self.position_embedding_map),
+                                                                              self.position_embedding_size])
+            # TODO: else case, implement import position embeddings from file
+
+        # create pos tag embeddings
+        if self.pos_tag_embedding_flag:
+            if self.pos_tag_embedding_dir == '':
+                print('POS Tag is selected with size {}'.format(self.pos_tag_embedding_size))
+                self.pos_tag_embedding_map = self.create_pos_tag_embeddings(training_candidate_relations)
+                mu, sigma = 0, 0.1
+                self.pos_tag_embedding_matrix = np.random.normal(mu, sigma, [len(self.pos_tag_embedding_map),
+                                                                             self.pos_tag_embedding_size])
+            # TODO: else case, implement import pos tag embeddings from file.
+
+        # create iob tag embeddings
+        if self.iob_tag_embedding_flag:
+            if self.iob_tag_embedding_dir == '':
+                print('IOB Tag is selected with size {}'.format(self.iob_tag_embedding_size))
+                self.iob_tag_embedding_map = self.create_iob_tag_embeddings(training_candidate_relations)
+                mu, sigma = 0, 0.1
+                self.iob_tag_embedding_matrix = np.random.normal(mu, sigma, [len(self.iob_tag_embedding_map),
+                                                                             self.iob_tag_embedding_size])
+            # TODO: else case, implement import iob tag embeddings from file.
+
+        self.create_data_dictionary(training_candidate_relations, training_labels, self.dataset['training'])
+        self.create_data_dictionary(development_candidate_relations, development_labels, self.dataset['development'])
+        self.create_data_dictionary(test_candidate_relations, test_labels, self.dataset['test'])
+
+    @staticmethod
+    def create_position_embeddings(candidate_relations):
+        position_embedding_map = {0: 0, 'pad': 1}
+        max_length = 0
+        for i in range(len(candidate_relations)):
+            candidate_relation = candidate_relations[i]
+            candidate_relation_tokens = candidate_relation[1]
+            if len(candidate_relation_tokens) > max_length:
+                max_length = len(candidate_relation_tokens)
+
+        for i in range(max_length):
+            position_embedding_map[i] = len(position_embedding_map)
+            position_embedding_map[-i] = len(position_embedding_map)
+
+        return position_embedding_map
+
+    @staticmethod
+    def create_pos_tag_embeddings(candidate_relations):
+        pos_tag_embedding_map = {'pad': 0, 'unk': 1}
+        for candidate_relation in candidate_relations:
+            candidate_relation_tokens = candidate_relation[1]
+            candidate_relation_pos_tags = [x[1] for x in candidate_relation_tokens]
+            for pos_tag in candidate_relation_pos_tags:
+                if pos_tag not in pos_tag_embedding_map:
+                    pos_tag_embedding_map[pos_tag] = len(pos_tag_embedding_map)
+        return pos_tag_embedding_map
+
+    @staticmethod
+    def create_iob_tag_embeddings(candidate_relations):
+        iob_tag_embedding_map = {'pad': 0, 'unk': 1}
+        for candidate_relation in candidate_relations:
+            candidate_relation_tokens = candidate_relation[1]
+            candidate_relation_iob_tags = [x[2] for x in candidate_relation_tokens]
+            for iob_tag in candidate_relation_iob_tags:
+                if iob_tag not in iob_tag_embedding_map:
+                    iob_tag_embedding_map[iob_tag] = len(iob_tag_embedding_map)
+        return iob_tag_embedding_map
+
+    def create_word_embeddings(self):
+        # read word embeddings from file
+        word_embedding_directory = self.root_directory + '/' + self.word_embedding_dir
+        word_embedding_file = open(word_embedding_directory, 'r', encoding='utf-8')
+        lines = word_embedding_file.readlines()
+        word_embedding_file.close()
+
+        word_embedding_map = {'unk': 0, 'pad': 1}
+        vocabulary_size = len(lines)
+        word_embedding_dimension = len(lines[0][:-1].split(' ')) - 1
+        word_embedding_matrix = np.zeros(((vocabulary_size + 2), word_embedding_dimension))
+        word_embedding_matrix[0:1, :] = np.random.rand(1, word_embedding_dimension)
+
+        progress_bar = progressbar.ProgressBar(maxval=len(lines),
+                                               widgets=["Reading word embedding: ",
+                                                        progressbar.Bar('=', '[', ']'),
+                                                        ' ',
+                                                        progressbar.Percentage()])
+        progress_bar_counter = 0
+        progress_bar.start()
 
         for idx in range(len(lines)):
             line = lines[idx][:-1].split(' ')
@@ -103,194 +224,372 @@ class DataInterface(object):
             word_embedding = np.asarray(word_embedding)
 
             # add embedding to embeddings
-            embeddings[idx+2, :] = word_embedding
+            word_embedding_matrix[idx+2, :] = word_embedding
 
             # assign id to token
-            current_id = len(word_id_mapping)
-            word_id_mapping[token] = current_id
+            current_id = len(word_embedding_map)
+            word_embedding_map[token] = current_id
 
-        return embeddings, word_id_mapping
+            progress_bar_counter = progress_bar_counter + 1
+            progress_bar.update(progress_bar_counter)
 
-    def parse_dataset(self, data_dictionary, data, labels, text_selection, binary_relation, training_flag):
-        for i in range(len(data)):
-            label = labels[i]
+        progress_bar.finish()
 
-            instance = data[i]
-            instance_id = instance[0]
-            instance_text = instance[1]
+        return word_embedding_map, word_embedding_matrix, word_embedding_dimension
 
+    def create_candidate_relation(self, raw_dataset, dataset_type):
+        candidate_relation_list = []
+
+        progress_bar = progressbar.ProgressBar(maxval=len(raw_dataset),
+                                               widgets=["Preparing candidate relations ({}): ".format(dataset_type),
+                                                        progressbar.Bar('=', '[', ']'),
+                                                        ' ',
+                                                        progressbar.Percentage()])
+        progress_bar_counter = 0
+        progress_bar.start()
+
+        for i in range(len(raw_dataset)):
+            instance = raw_dataset[i]
+
+            instance_txt = instance[1]
             arg1_id = instance[2]
-            arg1_text = instance[3]
+            arg1_txt = instance[3]
             arg1_type = instance[4]
-            arg1_start_idx = instance[5]
-
+            arg1_start_idx = int(instance[5])
             arg2_id = instance[6]
-            arg2_text = instance[7]
+            arg2_txt = instance[7]
             arg2_type = instance[8]
-            arg2_start_idx = instance[9]
+            arg2_start_idx = int(instance[9])
 
-            # full text sentence or text between entities
-            protein_loc, chemical_loc, tokenized_sentence, \
-                sent_pos_tags, sent_iob_tags = self.preprocess_sentence(sentence=instance_text,
-                                                                        arg1_text=arg1_text,
-                                                                        arg1_start=int(arg1_start_idx),
-                                                                        arg1_type=arg1_type,
-                                                                        arg2_text=arg2_text,
-                                                                        arg2_start=int(arg2_start_idx),
-                                                                        arg2_type=arg2_type,
-                                                                        sentence_trim=text_selection)
+            # fetch text between entities
+            if arg1_start_idx < arg2_start_idx:
+                trim_start_idx = arg1_start_idx
+                trim_end_idx = arg2_start_idx + len(arg2_txt)
+                candidate_relation = instance_txt[trim_start_idx:trim_end_idx]
+                first_entity_id = arg1_id
+            else:
+                trim_start_idx = arg2_start_idx
+                trim_end_idx = arg1_start_idx + len(arg1_txt)
+                candidate_relation = instance_txt[trim_start_idx:trim_end_idx]
+                first_entity_id = arg2_id
 
-            if training_flag:  # create pos tag and iob tag only from training dataset.
-                # create pos tag mapping dictionary
-                for j in range(len(sent_pos_tags)):
-                    pos_tag = sent_pos_tags[j]
-                    if pos_tag not in self.pos_tag_mapping:
-                        self.pos_tag_mapping[pos_tag] = len(self.pos_tag_mapping)
+            # create candidate relation with respect to text selection parameter
+            result = instance
+            if self.text_selection == 'part':
+                # tokenize candidate relation
+                candidate_relation_tokens = nltk.pos_tag(nltk.word_tokenize(candidate_relation))
+                grammar = "NP: {<DT>?<JJ>*<NN>}"
+                cp = nltk.RegexpParser(grammar)
+                with redirect_stdout(open(os.devnull, "w")):
+                    candidate_relation_tokens = cp.parse(candidate_relation_tokens)
+                candidate_relation_tokens = nltk.tree2conlltags(candidate_relation_tokens)
 
-                # create iob tag mapping dictionary
-                for j in range(len(sent_iob_tags)):
-                    iob_tag = sent_iob_tags[j]
-                    if iob_tag not in self.iob_tag_mapping:
-                        self.iob_tag_mapping[iob_tag] = len(self.iob_tag_mapping)
+                # add tokenized candidate relations to result instance
+                result[1] = candidate_relation_tokens
 
-            # binary relation or multiclass relation
-            if binary_relation and label != 0:
-                label = 1
+            elif self.text_selection == 'e_part':
+                # obtain candidate relation - extended part between entities
+                sentence_begin = instance_txt[0:trim_start_idx]
+                sentence_end = instance_txt[trim_start_idx:]
+                sentence_begin_tokens = nltk.word_tokenize(sentence_begin)
+                sentence_end_tokens = nltk.word_tokenize(sentence_end)
 
-            # check for sentence empty or not
-            if len(tokenized_sentence) != 0:
-                # get maximum sequence length
-                if data_dictionary['max_seq_len'] < len(tokenized_sentence):
-                    data_dictionary['max_seq_len'] = len(tokenized_sentence)
+                if len(sentence_begin_tokens) > 1:
+                    candidate_relation = sentence_begin_tokens[-2] + " " + sentence_begin_tokens[-1] \
+                                         + " " + candidate_relation
+                elif len(sentence_begin) == 1:
+                    candidate_relation = sentence_begin_tokens[-1] + " " + candidate_relation
 
-                data_dictionary['abstract_ids'].append(instance_id)
-                data_dictionary['data'].append(tokenized_sentence)
-                data_dictionary['pos_tags'].append(sent_pos_tags)
-                data_dictionary['iob_tags'].append(sent_iob_tags)
-                data_dictionary['entities'].append((arg1_text, arg2_text))
-                data_dictionary['entity_ids'].append((arg1_id, arg2_id))
-                data_dictionary['labels'].append(label)
-                data_dictionary['seq_lens'].append(len(tokenized_sentence))
-                data_dictionary['argument_locations'].append((protein_loc, chemical_loc))
+                if len(sentence_end_tokens) > 1:
+                    candidate_relation = candidate_relation + " " + sentence_end_tokens[0] + " " \
+                                         + sentence_end_tokens[1]
+                elif len(sentence_end_tokens) == 1:
+                    candidate_relation = candidate_relation + " " + sentence_end_tokens[0]
+
+                # tokenize candidate relation
+                candidate_relation_tokens = nltk.pos_tag(nltk.word_tokenize(candidate_relation))
+                grammar = "NP: {<DT>?<JJ>*<NN>}"
+                cp = nltk.RegexpParser(grammar)
+                with redirect_stdout(open(os.devnull, "w")):
+                    candidate_relation_tokens = cp.parse(candidate_relation_tokens)
+                candidate_relation_tokens = nltk.tree2conlltags(candidate_relation_tokens)
+
+                # add tokenized candidate relations to result instance
+                result[1] = candidate_relation_tokens
+
+            elif self.text_selection == 'full':
+                # tokenize candidate relation - full sentence
+                instance_txt_tokens = nltk.pos_tag(nltk.word_tokenize(instance_txt))
+                grammar = "NP: {<DT>?<JJ>*<NN>}"
+                cp = nltk.RegexpParser(grammar)
+                with redirect_stdout(open(os.devnull, "w")):
+                    instance_txt_tokens = cp.parse(instance_txt_tokens)
+                instance_txt_tokens = nltk.tree2conlltags(instance_txt_tokens)
+                # add tokenized candidate relation to result instance
+                result[1] = instance_txt_tokens
+
+            # modify result instance
+            # replace arguments if they are misplaced
+            if first_entity_id == arg2_id:
+                tmp = result[2:6]
+                result[2:6] = result[6:]
+                result[6:] = tmp
+
+            # obtain chemical and protein locations
+            # TODO: location assignment for full and e-part text selection.
+            if first_entity_id == arg1_id:
+                if arg1_type == 'CHEMICAL':
+                    chemical_location = 0
+                    protein_location = len(candidate_relation_tokens) - 1
+                else:
+                    protein_location = 0
+                    chemical_location = len(candidate_relation_tokens) - 1
+            else:
+                if arg2_type == 'CHEMICAL':
+                    chemical_location = 0
+                    protein_location = len(candidate_relation_tokens) - 1
+                else:
+                    protein_location = 0
+                    chemical_location = len(candidate_relation_tokens) - 1
+
+            # append chemical and protein location to result instance
+            result.append(chemical_location)
+            result.append(protein_location)
+
+            # append result to candidate relation list
+            candidate_relation_list.append(result)
+
+            progress_bar_counter = progress_bar_counter + 1
+            progress_bar.update(progress_bar_counter)
+
+        progress_bar.finish()
+        # return candidate relations list
+        return candidate_relation_list
+
+    @staticmethod
+    def create_data_dictionary(candidate_relations, candidate_relation_labels, data_dictionary):
+        for i in range(len(candidate_relations)):
+            candidate_relation = candidate_relations[i]
+            candidate_relation_label = candidate_relation_labels[i]
+
+            cr_abstract_id = candidate_relation[0]
+
+            cr_tokens = candidate_relation[1]
+            cr_tokens_txt = [x[0] for x in cr_tokens]
+            cr_tokens_pos_tags = [x[1] for x in cr_tokens]
+            cr_tokens_iob_tags = [x[2] for x in cr_tokens]
+
+            cr_arg1_id = candidate_relation[2]
+            cr_arg1_txt = candidate_relation[3]
+            cr_arg1_type = candidate_relation[4]
+            cr_arg1_start_idx = candidate_relation[5]
+            cr_arg2_id = candidate_relation[6]
+            cr_arg2_txt = candidate_relation[7]
+            cr_arg2_type = candidate_relation[8]
+            cr_arg2_start_idx = candidate_relation[9]
+            chemical_location = candidate_relation[10]
+            protein_location = candidate_relation[11]
+
+            if len(cr_tokens) != 0:
+
+                # assign maximum sequence length
+                if data_dictionary['max_seq_len'] < len(cr_tokens):
+                    data_dictionary['max_seq_len'] = len(cr_tokens)
+
+                data_dictionary['abstract_ids'].append(cr_abstract_id)
+                data_dictionary['data'].append(cr_tokens_txt)
+                data_dictionary['pos_tags'].append(cr_tokens_pos_tags)
+                data_dictionary['iob_tags'].append(cr_tokens_iob_tags)
+                data_dictionary['entities'].append((cr_arg1_txt, cr_arg2_txt))
+                data_dictionary['entity_ids'].append((cr_arg1_id, cr_arg2_id))
+                data_dictionary['labels'].append(candidate_relation_label)
+                data_dictionary['seq_lens'].append(len(cr_tokens))
+                data_dictionary['argument_locations'].append((protein_location, chemical_location))
 
     def get_batch(self, dataset_type):
-        dataset = self.dataset[dataset_type]
 
-        if dataset['batch_idx'] == len(dataset['data']):
-            dataset['batch_idx'] = 0
+        # fetch candidate relation dataset
+        candidate_relation_dataset = self.dataset[dataset_type]
 
-        batch_start_idx = dataset['batch_idx']
-        batch_end_idx = min([batch_start_idx + self.batch_size, len(dataset['data'])])
+        # calculate start and end index of batch
+        if candidate_relation_dataset['batch_idx'] == len(candidate_relation_dataset['data']):
+            candidate_relation_dataset['batch_idx'] = 0
+        batch_start_idx = candidate_relation_dataset['batch_idx']
+        batch_end_idx = min([batch_start_idx + self.batch_size, len(candidate_relation_dataset['data'])])
 
-        # get batch data
-        pad_id_data = self.word_to_id['pad']
-        pad_id_distance = self.pos_to_id['pad']
-        pad_id_pos_tag = self.pos_tag_mapping['pad']
-        pad_id_iob_tag = self.iob_tag_mapping['pad']
+        # get pad ids for embeddings
+        word_embedding_pad_id = self.word_embedding_map['pad']
+        if self.position_embedding_flag:
+            position_embedding_pad_id = self.position_embedding_map['pad']
 
-        # create matrix for token_name, token_dist_protein, token_dist_chemical, token_pos, token_iob
-        batch_data = np.full((self.batch_size, dataset['max_seq_len']), pad_id_data)
-        batch_distance_protein = np.full((self.batch_size, dataset['max_seq_len']), pad_id_distance)
-        batch_distance_chemical = np.full((self.batch_size, dataset['max_seq_len']), pad_id_distance)
-        batch_data_pos_ids = np.full((self.batch_size, dataset['max_seq_len']), pad_id_pos_tag)
-        batch_data_iob_ids = np.full((self.batch_size, dataset['max_seq_len']), pad_id_iob_tag)
+        if self.pos_tag_embedding_flag:
+            pos_tag_embedding_pad_id = self.pos_tag_embedding_map['pad']
+
+        if self.iob_tag_embedding_flag:
+            iob_tag_embedding_pad_id = self.iob_tag_embedding_map['pad']
+
+        # prepare matrices for batch data: word, position, pos tag and iob tag embeddings.
+        batch_word_embedding_ids = np.full((self.batch_size, candidate_relation_dataset['max_seq_len']),
+                                           word_embedding_pad_id)
+        if self.position_embedding_flag:
+            batch_distance_protein = np.full((self.batch_size, candidate_relation_dataset['max_seq_len']),
+                                             position_embedding_pad_id)
+            batch_distance_chemical = np.full((self.batch_size, candidate_relation_dataset['max_seq_len']),
+                                              position_embedding_pad_id)
+        if self.pos_tag_embedding_flag:
+            batch_pos_ids = np.full((self.batch_size, candidate_relation_dataset['max_seq_len']), pos_tag_embedding_pad_id)
+
+        if self.iob_tag_embedding_flag:
+            batch_iob_ids = np.full((self.batch_size, candidate_relation_dataset['max_seq_len']), iob_tag_embedding_pad_id)
 
         # for each sentence from batch_start_idx to batch_end_idx
         for batch_idx in range(batch_start_idx, batch_end_idx):
-            tokenized_text = dataset['data'][batch_idx]
-            sentence_pos_ids = dataset['pos_tags'][batch_idx]
-            sentence_iob_ids = dataset['iob_tags'][batch_idx]
-            protein_loc = dataset['argument_locations'][batch_idx][0]
-            chemical_loc = dataset['argument_locations'][batch_idx][1]
+            cr_tokens_txt = candidate_relation_dataset['data'][batch_idx]
+
+            if self.pos_tag_embedding_flag:
+                cr_tokens_pos = candidate_relation_dataset['pos_tags'][batch_idx]
+
+            if self.iob_tag_embedding_flag:
+                cr_tokens_iob = candidate_relation_dataset['iob_tags'][batch_idx]
+
+            if self.position_embedding_flag:
+                cr_protein_location = candidate_relation_dataset['argument_locations'][batch_idx][0]
+                cr_chemical_location = candidate_relation_dataset['argument_locations'][batch_idx][1]
 
             # traverse sentence for each token
-            for token_idx in range(len(tokenized_text)):
-                token = tokenized_text[token_idx]  # word token
-                pos_tag = sentence_pos_ids[token_idx]  # token pos token
-                iob_tag = sentence_iob_ids[token_idx]  # token iob token
-                distance_to_protein = token_idx - protein_loc  # token distance to protein
-                distance_to_chemical = token_idx - chemical_loc  # token distance to chemical
+            for i in range(len(cr_tokens_txt)):
+                token_txt = cr_tokens_txt[i]
 
-                # get token id mapping
-                if token in self.word_to_id:
-                    token_id = self.word_to_id[token]
-                else:
-                    token_id = self.word_to_id['unk']
+                if self.pos_tag_embedding_flag:\
+                    pos_tag = cr_tokens_pos[i]
 
-                # get token pos id mapping
-                if pos_tag in self.pos_tag_mapping:
-                    pos_id = self.pos_tag_mapping[pos_tag]
-                else:
-                    pos_id = self.pos_tag_mapping['unk']
+                if self.iob_tag_embedding_flag:
+                    iob_tag = cr_tokens_iob[i]
 
-                # get token iob id mapping
-                if iob_tag in self.iob_tag_mapping:
-                    iob_tag_id = self.iob_tag_mapping[iob_tag]
+                if self.position_embedding_flag:
+                    distance_to_protein = i - cr_protein_location  # token distance to protein
+                    distance_to_chemical = i - cr_chemical_location  # token distance to chemical
+
+                # obtain token txt id
+                if token_txt in self.word_embedding_map:
+                    token_txt_id = self.word_embedding_map[token_txt]
                 else:
-                    iob_tag_id = self.iob_tag_mapping['unk']
+                    token_txt_id = self.word_embedding_map['unk']
+
+                # obtain pos id
+                if self.pos_tag_embedding_flag:
+                    if pos_tag in self.pos_tag_embedding_map:
+                        pos_tag_id = self.pos_tag_embedding_map[pos_tag]
+                    else:
+                        pos_tag_id = self.pos_tag_embedding_map['unk']
+
+                # obtain iob tag id
+                if self.iob_tag_embedding_flag:
+                    if iob_tag in self.iob_tag_embedding_map:
+                        iob_tag_id = self.iob_tag_embedding_map[iob_tag]
+                    else:
+                        iob_tag_id = self.iob_tag_embedding_map['unk']
 
                 # adjust distance to protein in training max length
-                if distance_to_protein >= self.dataset['training']['max_seq_len']:
-                    distance_to_protein = self.dataset['training']['max_seq_len'] - 1
-                elif distance_to_protein <= -self.dataset['training']['max_seq_len']:
-                    distance_to_protein = -self.dataset['training']['max_seq_len'] + 1
+                if self.position_embedding_flag:
+                    if distance_to_protein >= self.dataset['training']['max_seq_len']:
+                        distance_to_protein = self.dataset['training']['max_seq_len'] - 1
+                    elif distance_to_protein <= -self.dataset['training']['max_seq_len']:
+                        distance_to_protein = -self.dataset['training']['max_seq_len'] + 1
 
-                # adjust distance to chemical in training max length
-                if distance_to_chemical >= self.dataset['training']['max_seq_len']:
-                    distance_to_chemical = self.dataset['training']['max_seq_len'] - 1
-                elif distance_to_chemical <= -self.dataset['training']['max_seq_len']:
-                    distance_to_chemical = -self.dataset['training']['max_seq_len'] + 1
+                    # adjust distance to chemical in training max length
+                    if distance_to_chemical >= self.dataset['training']['max_seq_len']:
+                        distance_to_chemical = self.dataset['training']['max_seq_len'] - 1
+                    elif distance_to_chemical <= -self.dataset['training']['max_seq_len']:
+                        distance_to_chemical = -self.dataset['training']['max_seq_len'] + 1
 
-                # get distance to protein id mapping
-                distance_to_protein_id = self.pos_to_id[distance_to_protein]
+                    # get distance to protein id mapping
+                    distance_to_protein_id = self.position_embedding_map[distance_to_protein]
 
-                # get distance to chemical id mapping
-                distance_to_chemical_id = self.pos_to_id[distance_to_chemical]
+                    # get distance to chemical id mapping
+                    distance_to_chemical_id = self.position_embedding_map[distance_to_chemical]
 
-                # fill the batch data matrices
-                batch_data[(batch_idx % self.batch_size), token_idx] = token_id
-                batch_distance_protein[(batch_idx % self.batch_size), token_idx] = distance_to_protein_id
-                batch_distance_chemical[(batch_idx % self.batch_size), token_idx] = distance_to_chemical_id
-                batch_data_pos_ids[(batch_idx % self.batch_size), token_idx] = pos_id
-                batch_data_iob_ids[(batch_idx % self.batch_size), token_idx] = iob_tag_id
+                # fill token information in batch matrix
+                batch_word_embedding_ids[(batch_idx % self.batch_size), i] = token_txt_id
+                if self.pos_tag_embedding_flag:
+                    batch_pos_ids[(batch_idx % self.batch_size), i] = pos_tag_id
 
-        # get batch sequence length
-        batch_seq_lens = dataset['seq_lens'][batch_start_idx:batch_end_idx]
+                if self.iob_tag_embedding_flag:
+                    batch_iob_ids[(batch_idx % self.batch_size), i] = iob_tag_id
 
-        # get batch one hot labels
-        batch_labels = dataset['labels'][batch_start_idx:batch_end_idx]
+                if self.position_embedding_flag:
+                    batch_distance_protein[(batch_idx % self.batch_size), i] = distance_to_protein_id
+                    batch_distance_chemical[(batch_idx % self.batch_size), i] = distance_to_chemical_id
+
+        # obtain sequence lengths
+        batch_seq_lens = candidate_relation_dataset['seq_lens'][batch_start_idx:batch_end_idx]
+
+        # obtain labels and convert it to one-hot representation
+        batch_labels = candidate_relation_dataset['labels'][batch_start_idx:batch_end_idx]
         batch_labels = self.convert_one_hot(batch_labels)
 
+        # update next batch idx with current batch end idx
         self.dataset[dataset_type]['batch_idx'] = batch_end_idx
 
         if dataset_type != "training":
-            batch_data = self.postprocess_data(batch_data)
-            batch_distance_protein = self.postprocess_data(batch_distance_protein)
-            batch_distance_chemical = self.postprocess_data(batch_distance_chemical)
-            batch_data_pos_ids = self.postprocess_data(batch_data_pos_ids)
-            batch_data_iob_ids = self.postprocess_data(batch_data_iob_ids)
-            self.process_seq_length(batch_seq_lens)
+            batch_word_embedding_ids = self.trim_batch_data(batch_word_embedding_ids)
+            if self.position_embedding_flag:
+                batch_distance_protein = self.trim_batch_data(batch_distance_protein)
+                batch_distance_chemical = self.trim_batch_data(batch_distance_chemical)
+            if self.pos_tag_embedding_flag:
+                batch_pos_ids = self.trim_batch_data(batch_pos_ids)
+            if self.iob_tag_embedding_flag:
+                batch_iob_ids = self.trim_batch_data(batch_iob_ids)
 
-        return batch_data, batch_data_pos_ids, batch_data_iob_ids, \
-               batch_labels, batch_seq_lens, batch_distance_protein, batch_distance_chemical
+            batch_seq_lens = self.trim_batch_data(batch_seq_lens)
 
-    def postprocess_data(self, data):
+        batch_result = [batch_word_embedding_ids, batch_seq_lens, batch_labels]
+        if self.pos_tag_embedding_flag:
+            batch_result.append(batch_pos_ids)
+        if self.iob_tag_embedding_flag:
+            batch_result.append(batch_iob_ids)
+        if self.position_embedding_flag:
+            batch_result.append(batch_distance_protein)
+            batch_result.append(batch_distance_chemical)
+
+        return batch_result
+
+    def trim_batch_data(self, data):
         training_max_length = self.dataset['training']['max_seq_len']
-        current_max_length = data.shape[1]
-        result_data = np.zeros((self.batch_size, training_max_length))
+        if isinstance(data, list):
+            seq_lens = np.zeros([self.batch_size])
+            for i in range(len(data)):
+                if data[i] > training_max_length:
+                    seq_lens[i] = training_max_length
+                else:
+                    seq_lens[i] = data[i]
+            return seq_lens
+        else:  # trim 2d batch data
+            current_sequence_length = data.shape[1]
+            result = np.zeros((self.batch_size, training_max_length))
 
-        if training_max_length >= current_max_length:  # pad dataset
-            result_data[:, :current_max_length] = data
-            return result_data
-        else:  # crop dataset
-            data = data[:, :training_max_length]
-            return data
+            if training_max_length >= current_sequence_length:
+                result[:, :current_sequence_length] = data
+                return result
+            else:
+                data = data[:, :training_max_length]
+                return data
 
-    def process_seq_length(self, seq_lens):
-        limit_max_length = self.dataset['training']['max_seq_len']
-        for idx in range(len(seq_lens)):
-            if seq_lens[idx] > limit_max_length:
-                seq_lens[idx] = limit_max_length
+    def get_embedding_information(self):
+        result_dict = {'position_embedding_flag': self.position_embedding_flag,
+                       'pos_tag_embedding_flag': self.pos_tag_embedding_flag,
+                       'iob_tag_embedding_flag': self.iob_tag_embedding_flag}
+        if self.position_embedding_flag:
+            result_dict['position_embedding_size'] = self.position_embedding_size
+            result_dict['position_ids_size'] = self.self.position_embedding_matrix.shape[0]
+        if self.pos_tag_embedding_flag:
+            result_dict['pos_tag_embedding_size'] = self.pos_tag_embedding_size
+            result_dict['pos_tag_ids_size'] = self.pos_tag_embedding_matrix.shape[0]
+        if self.iob_tag_embedding_flag:
+            result_dict['iob_tag_embedding_flag'] = self.iob_tag_embedding_size
+            result_dict['iob_tag_ids_size'] = self.iob_tag_embedding_matrix.shape[0]
+
+        return result_dict
 
     def add_false_positive(self, dataset_type, fp_idx):
         dataset = self.dataset[dataset_type]
@@ -308,151 +607,69 @@ class DataInterface(object):
             idx = batch_start_idx + idx
             dataset['false_negative'].append(idx)
 
-    def write_results(self, dataset_type):
-        dataset = self.dataset[dataset_type]
-        false_positive = dataset['false_positive']
-        false_negative = dataset['false_negative']
-        with open("false_positive.txt", 'w') as file:
-            for idx in false_positive:
-                data = dataset['data'][idx]
-                raw_instance = self.raw_dataset[2][idx]
-                file.write('{}\nSelected Text: {}\n'.format(idx, ' '.join(data)))
-                file.write('Full Text: {}\nArgument1:{}, {}, {}\nArgument2:{}, {}, {}\n\n'.format(raw_instance[1],
-                                                                                                  raw_instance[2],
-                                                                                                  raw_instance[3],
-                                                                                                  raw_instance[4],
-                                                                                                  raw_instance[6],
-                                                                                                  raw_instance[7],
-                                                                                                  raw_instance[8])
-                           )
-        with open("false_negative.txt", 'w') as file:
-            for idx in false_negative:
-                data = dataset['data'][idx]
-                raw_instance = self.raw_dataset[2][idx]
-                file.write('{}\nSelected Text: {}\n'.format(idx, ' '.join(data)))
-                file.write('Full Text: {}\nArgument1:{}, {}, {}\nArgument2:{}, {}, {}\n\n'.format(raw_instance[1],
-                                                                                                  raw_instance[2],
-                                                                                                  raw_instance[3],
-                                                                                                  raw_instance[4],
-                                                                                                  raw_instance[6],
-                                                                                                  raw_instance[7],
-                                                                                                  raw_instance[8])
-                           )
+    def print_information(self):
+        print('Dataset Information:')
+        print('Training Set Size: {}'.format(len(self.dataset['training']['data'])))
+        print('Development Set Size: {}'.format(len(self.dataset['development']['data'])))
+        print('Test Set Size: {}\n'.format(len(self.dataset['test']['data'])))
+        print('Data Interface Information:')
+        print('Root Directory: {}'.format(self.root_directory))
+        print('Dataset Source: {}'.format(self.dataset_source))
+        print('Batch Size: {}'.format(self.batch_size))
+        print('Text Selection: {}'.format(self.text_selection))
+        print('Relation Type: {}'.format(self.relation_type))
+        print('Word Tokenizer: {}'.format(self.word_tokenizer))
+        print('Word Embedding Directory: {}\n'.format(self.word_embedding_dir))
 
-    def create_pos_embeddings(self):
-        pos_embedding_size = 50
-        dataset = self.dataset['training']
-        training_max_seq_len = dataset['max_seq_len']
-        pos_to_id = {0: 0, 'pad': 1}
-        for i in range(1, training_max_seq_len):
-            pos_to_id[i] = len(pos_to_id)
-        for i in range(1, training_max_seq_len):
-            pos_to_id[-i] = len(pos_to_id)
-        return pos_to_id
+        print('Position Embedding Information:')
+        print('Flag: {}'.format(self.position_embedding_flag))
+        if self.position_embedding_flag:
+            print('Directory: {}'.format(self.position_embedding_dir))
+            print('Size: {}\n'.format(self.position_embedding_size))
 
-    @staticmethod
-    def preprocess_sentence(sentence, arg1_text, arg1_start, arg1_type,
-                            arg2_text, arg2_start, arg2_type, sentence_trim):
-        if arg1_start < arg2_start:
-            trim_start_idx = arg1_start
-            trim_end_idx = arg2_start + len(arg2_text)
-            instance_text = sentence[trim_start_idx:trim_end_idx]
-            if arg1_type == 'CHEMICAL':
-                first_entity_type = 'chemical'
-            else:
-                first_entity_type = 'gene'
-        else:
-            trim_start_idx = arg2_start
-            trim_end_idx = arg1_start + len(arg1_text)
-            instance_text = sentence[trim_start_idx:trim_end_idx]
-            if arg2_type == 'CHEMICAL':
-                first_entity_type = 'chemical'
-            else:
-                first_entity_type = 'gene'
-        trim = instance_text.strip()
+        print('POS Tag Embedding Information:')
+        print('Flag: {}'.format(self.pos_tag_embedding_flag))
+        if self.pos_tag_embedding_flag:
+            print('Directory: {}'.format(self.pos_tag_embedding_dir))
+            print('Size: {}\n'.format(self.pos_tag_embedding_size))
 
-        if sentence_trim == 'part':
-            # tokenized_sent = nltk.word_tokenize(trim)
-            tmp = nltk.pos_tag(nltk.word_tokenize(trim))
-            grammar = "NP: {<DT>?<JJ>*<NN>}"
-            cp = nltk.RegexpParser(grammar)
-            with redirect_stdout(open(os.devnull, "w")):
-                result = cp.parse(tmp)
-            tmp = nltk.tree2conlltags(result)
+        print('IOB Tag Embedding Information:')
+        print('Flag: {}'.format(self.iob_tag_embedding_flag))
+        if self.iob_tag_embedding_flag:
+            print('Directory: {}'.format(self.iob_tag_embedding_dir))
+            print('Size: {}'.format(self.iob_tag_embedding_size))
 
-            # tmp = nltk.pos_tag(tokenized_sent)
-            tokenized_words_str = [x[0] for x in tmp]
-            tokenized_pos_tags_str = [x[1] for x in tmp]
-            tokenized_iob_tags_str = [x[2] for x in tmp]
+    def write_information(self, file):
+        file.write('Dataset Information: \n')
+        file.write('Training Set Size: {}\n'.format(len(self.dataset['training']['data'])))
+        file.write('Development Set Size: {}\n'.format(len(self.dataset['development']['data'])))
+        file.write('Test Set Size: {}\n \n'.format(len(self.dataset['test']['data'])))
+        file.write('Data Interface Information:\n')
+        file.write('Root Directory: {}\n'.format(self.root_directory))
+        file.write('Dataset Source: {}\n'.format(self.dataset_source))
+        file.write('Batch Size: {}\n'.format(self.batch_size))
+        file.write('Text Selection: {}\n'.format(self.text_selection))
+        file.write('Relation Type: {}\n'.format(self.relation_type))
+        file.write('Word Tokenizer: {}\n'.format(self.word_tokenizer))
+        file.write('Word Embedding Directory: {}\n \n'.format(self.word_embedding_dir))
 
-            if first_entity_type == 'chemical':
-                chemical_location = 0
-                protein_location = len(tmp) - 1
-            else:
-                chemical_location = len(tmp) - 1
-                protein_location = 0
+        file.write('Position Embedding Information:\n')
+        file.write('Flag: {}\n'.format(self.position_embedding_flag))
+        if self.position_embedding_flag:
+            file.write('Directory: {}\n'.format(self.position_embedding_dir))
+            file.write('Size: {}\n \n'.format(self.position_embedding_size))
 
-            return protein_location, chemical_location, tokenized_words_str, \
-                tokenized_pos_tags_str, tokenized_iob_tags_str
-        elif sentence_trim == 'e_part':
-            sentence_begin = sentence[0:trim_start_idx]
-            sentence_end = sentence[trim_end_idx:len(sentence)]
-            sentence_begin = nltk.word_tokenize(sentence_begin)
-            sentence_end = nltk.word_tokenize(sentence_end)
-            if len(sentence_begin) > 1:
-                extended_trim = sentence_begin[-2] + " " + sentence_begin[-1] + " " + extended_trim
-            elif len(sentence_begin) == 1:
-                extended_trim = sentence_begin[-1] + " " + extended_trim
-            if len(sentence_end) > 1:
-                extended_trim = extended_trim + " " + sentence_end[0] + " " + sentence_end[1]
-            elif len(sentence_end) == 1:
-                extended_trim = extended_trim + " " + sentence_end[0]
+        file.write('POS Tag Embedding Information: \n')
+        file.write('Flag: {}\n'.format(self.pos_tag_embedding_flag))
+        if self.pos_tag_embedding_flag:
+            file.write('Directory: {}\n'.format(self.pos_tag_embedding_dir))
+            file.write('Size: {}\n \n'.format(self.pos_tag_embedding_size))
 
-            if first_entity_type == 'chemical':
-                chemical_location = 2
-                protein_location = len(extended_trim) - 3
-            else:
-                chemical_location = len(extended_trim) - 3
-                protein_location = 2
-            return protein_location, chemical_location, extended_trim
-        elif sentence_trim == 'full':
-            sentence_begin = sentence[0:trim_start_idx]
-            sentence_end = sentence[trim_end_idx:len(sentence)]
-            tokenized_sentence_begin = nltk.word_tokenize(sentence_begin)
-            tokenized_sentence_end = nltk.word_tokenize(sentence_end)
-            tokenized_sentence_full = nltk.word_tokenize(sentence)
-            if first_entity_type == 'chemical':
-                chemical_location = len(tokenized_sentence_begin)
-                protein_location = len(tokenized_sentence_full) - len(tokenized_sentence_end) - 1
-            else:
-                chemical_location = len(tokenized_sentence_full) - len(tokenized_sentence_end) - 1
-                protein_location = len(tokenized_sentence_begin)
-            return protein_location, chemical_location, tokenized_sentence_full
-
-    @staticmethod
-    def check_dataset(dataset):
-        """
-        Check for dataset object shape and style.
-        :return check_flag: True if dataset is valid and False if dataset is invalid.
-        """
-
-        if hasattr(dataset, 'dataset'):  # biocreative dataset object has a list titled 'dataset'
-            if len(dataset.dataset) == 6:  # 'dataset' list should contain 6 items.
-                for i in range(3):
-                    start_idx = i * 2
-                    data = dataset.dataset[start_idx]
-                    label = dataset.dataset[start_idx+1]
-                    if len(data) == len(label):  # data and label should contain same number of instance
-                        for j in range(len(data)):
-                            if len(data[j]) != 10 or not (isinstance(label[j], int)):
-                                return False
-                    else:
-                        return False
-            else:
-                return False
-        else:
-            return False
-        return True
+        file.write('IOB Tag Embedding Information:\n')
+        file.write('Flag: {}\n'.format(self.iob_tag_embedding_flag))
+        if self.iob_tag_embedding_flag:
+            file.write('Directory: {}\n'.format(self.iob_tag_embedding_dir))
+            file.write('Size: {}\n'.format(self.iob_tag_embedding_size))
 
     @staticmethod
     def convert_one_hot(data):

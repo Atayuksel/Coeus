@@ -1,85 +1,52 @@
 import progressbar
 import nltk
 import os
-import pickle
 from itertools import combinations
 
 
-class BioCreativeData(object):
+class BioCreative(object):
 
-    def __init__(self, input_root, output_root, sent_tokenizer, binary_label):
-        self.input_root = input_root
-        self.output_root = output_root
-        self.tokenizer = sent_tokenizer  # 'NLTK' or 'GENIA'
-        self.binary_label = binary_label  # True or False
+    def __init__(self, root_directory, tokenizer, relation_type):
+        """
+        object that represents BioCreative dataset.
+        :param root_directory: directory where biocreative dataset exitst
+        :param tokenizer: tokenizer to be used: NLTK
+        :param relation_type: relation type: binary or multiclass
+        """
+
+        self.root_directory = root_directory
+        self.tokenizer = tokenizer
+        self.relation_type = relation_type
+
+        # dataset represents -> [train_instance, train_labels, dev_instance, dev_labels, test_instance, test_label]
         self.dataset = [None] * 6
 
-        # Check for previously created dataset.
-        dataset_info_dir = os.path.join(output_root, 'dataset_info.txt')
-        dataset_created = False
-        if os.path.exists(dataset_info_dir):
-            dataset_created = True
+        # prepare dataset
+        print('Start to prepare dataset')
+        self.dataset[0], self.dataset[1] = self.prepare_dataset(dataset_type='training')
+        self.dataset[2], self.dataset[3] = self.prepare_dataset(dataset_type='development')
+        self.dataset[4], self.dataset[5] = self.prepare_dataset(dataset_type='test')
 
-        if dataset_created:
-            self.dataset[0], self.dataset[1] = self.load_dataset(dataset='TRAINING')
-            self.dataset[2], self.dataset[3] = self.load_dataset(dataset='DEV')
-            self.dataset[4], self.dataset[5] = self.load_dataset(dataset='TEST')
-        else:
-            self.dataset[0], self.dataset[1] = self.prepare_dataset(dataset='TRAINING')
-            self.dataset[2], self.dataset[3] = self.prepare_dataset(dataset='DEV')
-            self.dataset[4], self.dataset[5] = self.prepare_dataset(dataset='TEST')
-
-    def load_dataset(self, dataset):
-        """
-        Load previously prepared dataset.
-        :param dataset: dataset type
-        :return data: data list
-        :return labels: labels list
-        """
-
-        data_directory = ''
-        label_directory = ''
-        if dataset == 'TRAINING':
-            data_directory = os.path.join(self.output_root, 'training_data.pickle')
-            label_directory = os.path.join(self.output_root, 'training_label.pickle')
-        elif dataset == 'DEV':
-            data_directory = os.path.join(self.output_root, 'dev_data.pickle')
-            label_directory = os.path.join(self.output_root, 'dev_label.pickle')
-        elif dataset == 'TEST':
-            data_directory = os.path.join(self.output_root, 'test_data.pickle')
-            label_directory = os.path.join(self.output_root, 'test_label.pickle')
-
-        with open(data_directory, 'rb') as file:
-            data = pickle.load(file)
-        with open(label_directory, 'rb') as file:
-            labels = pickle.load(file)
-        return data, labels
-
-    def prepare_dataset(self, dataset):
-        """
-        Derive candidate relations from training data.
-        :return list: list contains data, labels, pos mapping, iob mapping, longest sequence and word frequencies.
-        TODO: Write example of return list.
-        """
+    def prepare_dataset(self, dataset_type):
 
         abstracts_location = ''
         entities_location = ''
         relations_location = ''
-        if dataset == 'TRAINING':
-            root_directory = os.path.join(self.input_root, 'chemprot_training', 'chemprot_training')
-            abstracts_location = os.path.join(root_directory, "chemprot_training_abstracts.tsv")
-            entities_location = os.path.join(root_directory, "chemprot_training_entities.tsv")
-            relations_location = os.path.join(root_directory, "chemprot_training_relations.tsv")
-        elif dataset == 'DEV':
-            root_directory = os.path.join(self.input_root, 'chemprot_development', 'chemprot_development')
-            abstracts_location = os.path.join(root_directory, "chemprot_development_abstracts.tsv")
-            entities_location = os.path.join(root_directory, "chemprot_development_entities.tsv")
-            relations_location = os.path.join(root_directory, "chemprot_development_relations.tsv")
-        elif dataset == 'TEST':
-            root_directory = os.path.join(self.input_root, 'chemprot_test_gs', 'chemprot_test_gs')
-            abstracts_location = os.path.join(root_directory, "chemprot_test_abstracts_gs.tsv")
-            entities_location = os.path.join(root_directory, "chemprot_test_entities_gs.tsv")
-            relations_location = os.path.join(root_directory, "chemprot_test_relations_gs.tsv")
+        if dataset_type == 'training':
+            training_directory = os.path.join(self.root_directory, 'chemprot_training', 'chemprot_training')
+            abstracts_location = os.path.join(training_directory, "chemprot_training_abstracts.tsv")
+            entities_location = os.path.join(training_directory, "chemprot_training_entities.tsv")
+            relations_location = os.path.join(training_directory, "chemprot_training_relations.tsv")
+        elif dataset_type == 'development':
+            development_directory = os.path.join(self.root_directory, 'chemprot_development', 'chemprot_development')
+            abstracts_location = os.path.join(development_directory, "chemprot_development_abstracts.tsv")
+            entities_location = os.path.join(development_directory, "chemprot_development_entities.tsv")
+            relations_location = os.path.join(development_directory, "chemprot_development_relations.tsv")
+        elif dataset_type == 'test':
+            test_directory = os.path.join(self.root_directory, 'chemprot_test_gs', 'chemprot_test_gs')
+            abstracts_location = os.path.join(test_directory, "chemprot_test_abstracts_gs.tsv")
+            entities_location = os.path.join(test_directory, "chemprot_test_entities_gs.tsv")
+            relations_location = os.path.join(test_directory, "chemprot_test_relations_gs.tsv")
 
         abstracts = self.parse_abstract_file(abstracts_location)
         entities = self.parse_entity_file(entities_location)
@@ -89,12 +56,14 @@ class BioCreativeData(object):
         labels = []
 
         progress_bar = progressbar.ProgressBar(maxval=len(abstracts),
-                                               widgets=[progressbar.Bar('=', '[', ']'),
+                                               widgets=["Preparing {} dataset: ".format(dataset_type),
+                                                        progressbar.Bar('=', '[', ']'),
                                                         ' ',
                                                         progressbar.Percentage()])
         progress_bar_counter = 0
         progress_bar.start()
 
+        # for each abstract
         for abstract_id, abstract_text in abstracts.items():
             # get sentences
             sentences = nltk.sent_tokenize(abstract_text)
@@ -148,6 +117,9 @@ class BioCreativeData(object):
                                                              instance[2],
                                                              instance[6])
                         label = int(label)
+                        if self.relation_type == 'binary':
+                            if label != 0:
+                                label = 1
                         labels.append(label)
 
             progress_bar_counter = progress_bar_counter + 1
@@ -156,42 +128,13 @@ class BioCreativeData(object):
 
         return data, labels
 
-    def write_dataset(self, dataset):
-        """
-        Write prepared dataset to file
-        :param dataset: dataset type
-        :return:
-        """
-
-        data_directory = ''
-        label_directory = ''
-        data = []
-        labels = []
-        if dataset == 'TRAINING':
-            data_directory = os.path.join(self.output_root, 'training_data')
-            label_directory = os.path.join(self.output_root, 'training_label')
-            data = self.dataset[0]
-            labels = self.dataset[1]
-        elif dataset == 'DEV':
-            data_directory = os.path.join(self.output_root, 'dev_data')
-            label_directory = os.path.join(self.output_root, 'dev_label')
-            data = self.dataset[2]
-            labels = self.dataset[3]
-        elif dataset == 'TEST':
-            data_directory = os.path.join(self.output_root, 'test_data')
-            label_directory = os.path.join(self.output_root, 'test_label')
-            data = self.dataset[4]
-            labels = self.dataset[5]
-
-        with open(data_directory, 'wb') as file:
-            pickle.dump(data, file)
-        with open(label_directory, 'wb') as file:
-            pickle.dump(labels, file)
+    def get_dataset(self):
+        return self.dataset
 
     @staticmethod
     def check_instance_relation(relation_list, arg1, arg2):
         """
-        Takes the candidate relation and assign label to it.
+        takes the candidate relation and assign label to it.
         :param relation_list: relations list in abstract
         :param arg1: entity id of argument 1 in candidate relation
         :param arg2: entity id of argument 2 in candidate relation
@@ -210,7 +153,7 @@ class BioCreativeData(object):
     @staticmethod
     def parse_abstract_file(file_location):
         """
-        Takes BioCreative abstract file and returns a dictionary.
+        takes BioCreative abstract file and returns a dictionary.
         :return result: dictionary stores abstract ids and corresponding abstract
         '16357751' = full text of the abstract
         """
@@ -231,7 +174,7 @@ class BioCreativeData(object):
     def parse_entity_file(file_location):
         """
         takes biocreative entity file and return a dictionary
-        :return result: entities dictionary. Each abstract key contains a entity list
+        :return result: entities dictionary. Each abstract key contains a entity dict
         '11319232' = [{'abstractID': '11319232', 'entityID': 'T1', 'entityType': 'CHEMICAL', 'start_idx': '242', 'end_idx': '251', 'name': 'acyl-CoAs'},
                       {'abstractID': '11319232', 'entityID': 'T2', 'entityType': 'CHEMICAL', 'start_idx': '1193', 'end_idx': '1201', 'name': 'triacsin'},
                       ... , ]
