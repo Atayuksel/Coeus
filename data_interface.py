@@ -27,6 +27,11 @@ class DataInterface(object):
         self.word_tokenizer = config[section_name]['word_tokenizer']
         self.word_embedding_dir = config[section_name]['word_embedding_dir']
 
+        # flags for reading dataset
+        self.read_training_set = True
+        self.read_development_set = True
+        self.read_test_set = True
+
         # read embedding parameters
         # word embedding
         section_name = 'EMBEDDINGS'
@@ -79,21 +84,46 @@ class DataInterface(object):
             pre_dev_file_check = os.path.exists(pre_dev_file_dir)
             pre_test_file_check = os.path.exists(pre_test_file_dir)
 
+            # set reading flags for dataset type
+            if not pre_training_file_check:
+                self.read_training_set = False
+            if not pre_dev_file_check:
+                self.read_development_set = False
+            if not pre_test_file_check:
+                self.read_test_set = False
+
             if not pre_training_file_check or not pre_dev_file_check or not pre_test_file_check:
                 print("Error: no prepared data found in root directory: {}".format(self.root_directory))
                 sys.exit()
 
             # load prepared dataset
-            pre_training_data = pickle.load(open(pre_training_file_dir, "rb"))
-            pre_dev_data = pickle.load(open(pre_dev_file_dir, "rb"))
-            pre_test_data = pickle.load(open(pre_test_file_dir, "rb"))
+            if self.read_training_set:
+                pre_training_data = pickle.load(open(pre_training_file_dir, "rb"))
+            if self.read_development_set:
+                pre_dev_data = pickle.load(open(pre_dev_file_dir, "rb"))
+            if self.read_test_set:
+                pre_test_data = pickle.load(open(pre_test_file_dir, "rb"))
 
             # modify pre-trained dataset for data interface.
-            train_instance, train_label = zip(*pre_training_data)
-            dev_instance, dev_label = zip(*pre_dev_data)
-            test_instance, test_label = zip(*pre_test_data)
+            if self.read_training_set:
+                train_instance, train_label = zip(*pre_training_data)
+            if self.read_development_set:
+                dev_instance, dev_label = zip(*pre_dev_data)
+            if self.read_test_set:
+                test_instance, test_label = zip(*pre_test_data)
 
-            self.raw_dataset = [train_instance, train_label, dev_instance, dev_label, test_instance, test_label]
+            # create dataset
+            self.raw_dataset = []
+            if self.read_training_set:
+                self.raw_dataset.append(train_instance)
+                self.raw_dataset.append(train_label)
+            if self.read_development_set:
+                self.raw_dataset.append(dev_instance)
+                self.raw_dataset.append(dev_label)
+            if self.read_test_set:
+                self.raw_dataset.append(test_instance)
+                self.raw_dataset.append(test_label)
+
             print('Prepared dataset is loaded successfully.')
 
         elif self.dataset_source == 'biocreative':
@@ -106,12 +136,24 @@ class DataInterface(object):
 
             print('Biocreative dataset is loaded successfully.')
 
-        training_candidate_relations = self.create_candidate_relation(self.raw_dataset[0], 'training')
-        training_labels = self.raw_dataset[1]
-        development_candidate_relations = self.create_candidate_relation(self.raw_dataset[2], 'development')
-        development_labels = self.raw_dataset[3]
-        test_candidate_relations = self.create_candidate_relation(self.raw_dataset[4], 'test')
-        test_labels = self.raw_dataset[5]
+        raw_dataset_index = 0
+        if self.read_training_set:
+            training_candidate_relations = self.create_candidate_relation(self.raw_dataset[raw_dataset_index],
+                                                                          'training')
+            raw_dataset_index = raw_dataset_index + 1
+            training_labels = self.raw_dataset[raw_dataset_index]
+            raw_dataset_index = raw_dataset_index + 1
+        if self.read_development_set:
+            development_candidate_relations = self.create_candidate_relation(self.raw_dataset[raw_dataset_index],
+                                                                             'development')
+            raw_dataset_index = raw_dataset_index + 1
+            development_labels = self.raw_dataset[raw_dataset_index]
+            raw_dataset_index = raw_dataset_index + 1
+        if self.read_test_set:
+            test_candidate_relations = self.create_candidate_relation(self.raw_dataset[raw_dataset_index], 'test')
+            raw_dataset_index = raw_dataset_index + 1
+            test_labels = self.raw_dataset[raw_dataset_index]
+            raw_dataset_index = raw_dataset_index + 1
 
         # create word embeddings
         print("Start to fetch word embeddings from the file {}".format(self.root_directory + '/' +
@@ -151,9 +193,13 @@ class DataInterface(object):
                                                                              self.iob_tag_embedding_size])
             # TODO: else case, implement import iob tag embeddings from file.
 
-        self.create_data_dictionary(training_candidate_relations, training_labels, self.dataset['training'])
-        self.create_data_dictionary(development_candidate_relations, development_labels, self.dataset['development'])
-        self.create_data_dictionary(test_candidate_relations, test_labels, self.dataset['test'])
+        if self.read_training_set:
+            self.create_data_dictionary(training_candidate_relations, training_labels, self.dataset['training'])
+        if self.read_development_set:
+            self.create_data_dictionary(development_candidate_relations, development_labels,
+                                        self.dataset['development'])
+        if self.read_test_set:
+            self.create_data_dictionary(test_candidate_relations, test_labels, self.dataset['test'])
 
     @staticmethod
     def create_position_embeddings(candidate_relations):

@@ -10,7 +10,8 @@ import pickle
 
 
 class Predictor(object):
-    def __init__(self, predictor_id, data_interface, report_directory):
+    def __init__(self, predictor_id, data_interface, report_directory,
+                 development_set_flag, test_set_flag, early_stopping_set):
 
         # reset previously created tensorflow models.
         tf.reset_default_graph()
@@ -19,6 +20,14 @@ class Predictor(object):
         self.predictor_id = predictor_id
         self.data_interface = data_interface
         self.report_directory = report_directory
+
+        # boolean flags if prediction is applied in the dataset
+        self.development_set_flag = development_set_flag
+        self.test_set_flag = test_set_flag
+
+        # which dataset to use for early stopping
+        self.early_stopping_set = early_stopping_set
+
         # open configuration file
         config = configparser.ConfigParser()
         config.read('config.ini')
@@ -69,15 +78,17 @@ class Predictor(object):
         # best metrics, early stopping
         self.best_epoch = 0
 
-        self.best_development_metrics = [0, 0, 0]  # precision, recall, f1-measure
-        self.best_development_predictions = []
-        self.best_development_logits = []
-        self.best_development_truth_values = []
+        if self.development_set_flag:
+            self.best_development_metrics = [0, 0, 0]  # precision, recall, f1-measure
+            self.best_development_predictions = []
+            self.best_development_logits = []
+            self.best_development_truth_values = []
 
-        self.best_test_metrics = [0, 0, 0]  # precision, recall, f1-measure
-        self.best_test_predictions = []
-        self.best_test_logits = []
-        self.best_test_truth_values = []
+        if self.test_set_flag:
+            self.best_test_metrics = [0, 0, 0]  # precision, recall, f1-measure
+            self.best_test_predictions = []
+            self.best_test_logits = []
+            self.best_test_truth_values = []
 
         # print data interface information
         self.data_interface.print_information()
@@ -101,10 +112,12 @@ class Predictor(object):
         # calculate number of steps in batch for each dataset
         self.training_num_batch = math.ceil(len(self.data_interface.dataset['training']['data'])
                                             / self.data_interface.batch_size)
-        self.development_num_batch = math.ceil(len(self.data_interface.dataset['development']['data'])
-                                               / self.data_interface.batch_size)
-        self.test_num_batch = math.ceil(len(self.data_interface.dataset['test']['data'])
-                                        / self.data_interface.batch_size)
+        if self.development_set_flag:
+            self.development_num_batch = math.ceil(len(self.data_interface.dataset['development']['data'])
+                                                   / self.data_interface.batch_size)
+        if self.test_set_flag:
+            self.test_num_batch = math.ceil(len(self.data_interface.dataset['test']['data'])
+                                            / self.data_interface.batch_size)
 
         # fetch embeddings information
         embeddings_info = self.data_interface.get_embedding_information()
@@ -320,106 +333,127 @@ class Predictor(object):
                                                                                                              training_epoch_metrics[2]))
 
                 # development set predict
-                development_results = self.run_model(tf_sess=sess,
-                                                     dataset_type='development',
-                                                     num_step=self.development_num_batch)
+                if self.development_set_flag:
+                    development_results = self.run_model(tf_sess=sess,
+                                                         dataset_type='development',
+                                                         num_step=self.development_num_batch)
 
-                development_epoch_metrics = development_results[0]
-                development_epoch_measures = development_results[1]
-                development_epoch_predictions = development_results[2]
-                development_epoch_logits = development_results[3]
-                development_epoch_truth_values = development_results[4]
+                    development_epoch_metrics = development_results[0]
+                    development_epoch_measures = development_results[1]
+                    development_epoch_predictions = development_results[2]
+                    development_epoch_logits = development_results[3]
+                    development_epoch_truth_values = development_results[4]
 
-                print("Development Set Error: Precision:{}, Recall:{}, f1-measure:{}".format(development_epoch_metrics[0],
-                                                                                             development_epoch_metrics[1],
-                                                                                             development_epoch_metrics[2]))
+                    print("Development Set Error: Precision:{}, Recall:{}, f1-measure:{}".format(development_epoch_metrics[0],
+                                                                                                 development_epoch_metrics[1],
+                                                                                                 development_epoch_metrics[2]))
 
-                self.report_file.write("Development Set Error: Precision:{}, Recall:{}, f1-measure:{}\n".format(development_epoch_metrics[0],
-                                                                                                                development_epoch_metrics[1],
-                                                                                                                development_epoch_metrics[2]))
+                    self.report_file.write("Development Set Error: Precision:{}, Recall:{}, f1-measure:{}\n".format(development_epoch_metrics[0],
+                                                                                                                    development_epoch_metrics[1],
+                                                                                                                    development_epoch_metrics[2]))
                 # test set predict
-                test_results = self.run_model(tf_sess=sess,
-                                              dataset_type='test',
-                                              num_step=self.test_num_batch)
+                if self.test_set_flag:
+                    test_results = self.run_model(tf_sess=sess,
+                                                  dataset_type='test',
+                                                  num_step=self.test_num_batch)
 
-                test_epoch_metrics = test_results[0]
-                test_epoch_measures = test_results[1]
-                test_epoch_predictions = test_results[2]
-                test_epoch_logits = test_results[3]
-                test_epoch_truth_values = test_results[4]
+                    test_epoch_metrics = test_results[0]
+                    test_epoch_measures = test_results[1]
+                    test_epoch_predictions = test_results[2]
+                    test_epoch_logits = test_results[3]
+                    test_epoch_truth_values = test_results[4]
 
-                print("Test Set Error: Precision:{}, Recall:{}, f1-measure:{}".format(test_epoch_metrics[0],
-                                                                                      test_epoch_metrics[1],
-                                                                                      test_epoch_metrics[2]))
+                    print("Test Set Error: Precision:{}, Recall:{}, f1-measure:{}".format(test_epoch_metrics[0],
+                                                                                          test_epoch_metrics[1],
+                                                                                          test_epoch_metrics[2]))
 
-                self.report_file.write("Test Set Error: Precision:{}, Recall:{}, f1-measure:{}\n".format(test_epoch_metrics[0],
-                                                                                                         test_epoch_metrics[1],
-                                                                                                         test_epoch_metrics[2]))
+                    self.report_file.write("Test Set Error: Precision:{}, Recall:{}, f1-measure:{}\n".format(test_epoch_metrics[0],
+                                                                                                             test_epoch_metrics[1],
+                                                                                                             test_epoch_metrics[2]))
 
                 # set best development results and test results
-                if self.best_development_metrics[2] < development_epoch_metrics[2]:
+                if self.early_stopping_set == 'development':
+                    current_metric = self.development_epoch_metrics[2]
+                    best_metric = self.best_development_metrics[2]
+                if self.early_stopping_set == 'test':
+                    current_metric = self.test_epoch_metrics[2]
+                    best_metric = self.best_test_metrics[2]
+
+                if best_metric < current_metric:
                     # set best epoch
                     self.best_epoch = epoch
 
                     # set best development results
-                    self.best_development_metrics[0] = development_epoch_metrics[0]
-                    self.best_development_metrics[1] = development_epoch_metrics[1]
-                    self.best_development_metrics[2] = development_epoch_metrics[2]
-                    self.best_development_truth_values = development_epoch_truth_values
-                    self.best_development_predictions = development_epoch_predictions
-                    self.best_development_logits = development_epoch_logits
+                    if self.early_stopping_set == 'development':
+                        self.best_development_metrics[0] = development_epoch_metrics[0]
+                        self.best_development_metrics[1] = development_epoch_metrics[1]
+                        self.best_development_metrics[2] = development_epoch_metrics[2]
+                        self.best_development_truth_values = development_epoch_truth_values
+                        self.best_development_predictions = development_epoch_predictions
+                        self.best_development_logits = development_epoch_logits
 
                     # set best test results
-                    self.best_test_metrics[0] = test_epoch_metrics[0]
-                    self.best_test_metrics[1] = test_epoch_metrics[1]
-                    self.best_test_metrics[2] = test_epoch_metrics[2]
-                    self.best_test_truth_values = test_epoch_truth_values
-                    self.best_test_predictions = test_epoch_predictions
-                    self.best_test_logits = test_epoch_logits
+                    if self.early_stopping_set == 'test':
+                        self.best_test_metrics[0] = test_epoch_metrics[0]
+                        self.best_test_metrics[1] = test_epoch_metrics[1]
+                        self.best_test_metrics[2] = test_epoch_metrics[2]
+                        self.best_test_truth_values = test_epoch_truth_values
+                        self.best_test_predictions = test_epoch_predictions
+                        self.best_test_logits = test_epoch_logits
 
                 # check early stopping
-                # if self.best_epoch*2 < epoch and epoch > min_epoch_number:
-                #     self.report_file.write("\nBest Development Results:\n")
-                #     self.report_file.write("Development Precision: {}".format(self.best_development_metrics[0]))
-                #     self.report_file.write("Development Recall: {}".format(self.best_development_metrics[1]))
-                #     self.report_file.write("Development F1-measure: {}".format(self.best_development_metrics[2]))
-                #
-                #     self.report_file.write("\nBest Test Results:\n")
-                #     self.report_file.write("Test Precision: {}".format(self.best_test_metrics[0]))
-                #     self.report_file.write("Test Recall: {}".format(self.best_test_metrics[1]))
-                #     self.report_file.write("Test F1-measure: {}".format(self.best_test_metrics[2]))
-                #
-                #     pickle.dump(self.best_test_truth_values, open("best_test_truth_values.pkl", "wb"))
-                #     pickle.dump(self.best_test_predictions, open("best_test_truth_predictions.pkl", "wb"))
-                #
-                #     pickle.dump(self.best_development_truth_values, open("best_development_truth_values.pkl", "wb"))
-                #     pickle.dump(self.best_development_predictions, open("best_development_predictions.pkl", "wb"))
-                #
-                #     break
+                if self.best_epoch*2 < epoch and epoch > min_epoch_number:
+                    if self.development_set_flag:
+                        self.report_file.write("\nBest Development Results:\n")
+                        self.report_file.write("Development Precision: {}".format(self.best_development_metrics[0]))
+                        self.report_file.write("Development Recall: {}".format(self.best_development_metrics[1]))
+                        self.report_file.write("Development F1-measure: {}".format(self.best_development_metrics[2]))
 
-        self.report_file.write("\nBest Development Results:\n")
-        self.report_file.write("Development Precision: {}".format(self.best_development_metrics[0]))
-        self.report_file.write("Development Recall: {}".format(self.best_development_metrics[1]))
-        self.report_file.write("Development F1-measure: {}".format(self.best_development_metrics[2]))
+                        pickle.dump(self.best_development_truth_values, open(self.report_directory + '/' +
+                                                                             "best_development_truth_values.pkl", "wb"))
+                        pickle.dump(self.best_development_predictions, open(self.report_directory + '/' +
+                                                                            "best_development_predictions.pkl", "wb"))
+                        pickle.dump(self.best_development_logits, open(self.report_directory + '/' +
+                                                                       "best_development_logits.pkl", "wb"))
+                    if self.test_set_flag:
+                        self.report_file.write("\nBest Test Results:\n")
+                        self.report_file.write("Test Precision: {}".format(self.best_test_metrics[0]))
+                        self.report_file.write("Test Recall: {}".format(self.best_test_metrics[1]))
+                        self.report_file.write("Test F1-measure: {}".format(self.best_test_metrics[2]))
 
-        self.report_file.write("\nBest Test Results:\n")
-        self.report_file.write("Test Precision: {}".format(self.best_test_metrics[0]))
-        self.report_file.write("Test Recall: {}".format(self.best_test_metrics[1]))
-        self.report_file.write("Test F1-measure: {}".format(self.best_test_metrics[2]))
+                        pickle.dump(self.best_test_truth_values, open(self.report_directory + '/' +
+                                                                      "best_test_truth_values.pkl", "wb"))
+                        pickle.dump(self.best_test_predictions, open(self.report_directory + '/' +
+                                                                     "best_test_predictions.pkl", "wb"))
+                        pickle.dump(self.best_test_logits, open(self.report_directory + '/' +
+                                                                "best_test_logits.pkl", "wb"))
 
-        pickle.dump(self.best_test_truth_values, open(self.report_directory + '/' +
-                                                      "best_test_truth_values.pkl", "wb"))
-        pickle.dump(self.best_test_predictions, open(self.report_directory + '/' +
-                                                     "best_test_predictions.pkl", "wb"))
-        pickle.dump(self.best_test_logits, open(self.report_directory + '/' +
-                                                "best_test_logits.pkl", "wb"))
+                    break
 
-        pickle.dump(self.best_development_truth_values, open(self.report_directory + '/' +
-                                                             "best_development_truth_values.pkl", "wb"))
-        pickle.dump(self.best_development_predictions, open(self.report_directory + '/' +
-                                                            "best_development_predictions.pkl", "wb"))
-        pickle.dump(self.best_development_logits, open(self.report_directory + '/' +
-                                                       "best_development_logits.pkl", "wb"))
+        if self.development_set_flag:
+            self.report_file.write("\nBest Development Results:\n")
+            self.report_file.write("Development Precision: {}".format(self.best_development_metrics[0]))
+            self.report_file.write("Development Recall: {}".format(self.best_development_metrics[1]))
+            self.report_file.write("Development F1-measure: {}".format(self.best_development_metrics[2]))
+
+            pickle.dump(self.best_development_truth_values, open(self.report_directory + '/' +
+                                                                 "best_development_truth_values.pkl", "wb"))
+            pickle.dump(self.best_development_predictions, open(self.report_directory + '/' +
+                                                                "best_development_predictions.pkl", "wb"))
+            pickle.dump(self.best_development_logits, open(self.report_directory + '/' +
+                                                           "best_development_logits.pkl", "wb"))
+        if self.test_set_flag:
+            self.report_file.write("\nBest Test Results:\n")
+            self.report_file.write("Test Precision: {}".format(self.best_test_metrics[0]))
+            self.report_file.write("Test Recall: {}".format(self.best_test_metrics[1]))
+            self.report_file.write("Test F1-measure: {}".format(self.best_test_metrics[2]))
+
+            pickle.dump(self.best_test_truth_values, open(self.report_directory + '/' +
+                                                          "best_test_truth_values.pkl", "wb"))
+            pickle.dump(self.best_test_predictions, open(self.report_directory + '/' +
+                                                         "best_test_predictions.pkl", "wb"))
+            pickle.dump(self.best_test_logits, open(self.report_directory + '/' +
+                                                    "best_test_logits.pkl", "wb"))
 
     def get_development_results(self):
         results = [self.best_development_metrics,

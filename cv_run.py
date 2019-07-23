@@ -185,27 +185,27 @@ bc_dataset = dataset.BioCreative(root_directory=root_directory,
 
 # parse training and development dataset
 raw_dataset = bc_dataset.dataset
-instances = raw_dataset[0] + raw_dataset[2]
-labels = raw_dataset[1] + raw_dataset[3]
+instances = raw_dataset[0] + raw_dataset[2] + raw_dataset[4]
+labels = raw_dataset[1] + raw_dataset[3] + raw_dataset[5]
 data = list(zip(instances, labels))
 
 # parse test dataset
-test_instances = raw_dataset[4]
-test_labels = raw_dataset[5]
-test_data = list(zip(test_instances, test_labels))
+# test_instances = raw_dataset[4]
+# test_labels = raw_dataset[5]
+# test_data = list(zip(test_instances, test_labels))
 
 # create cv matrix
 precision_matrix = np.zeros([repetition_number*fold_number, 2])
 recall_matrix = np.zeros([repetition_number*fold_number, 2])
 f1_measure_matrix = np.zeros([repetition_number*fold_number, 2])
 
-a_dev_predictions = []
-a_dev_truth_values = []
-a_dev_logits = []
+a_predictions = []
+a_truth_values = []
+a_logits = []
 
-b_dev_predictions = []
-b_dev_truth_values = []
-b_dev_logits = []
+b_predictions = []
+b_truth_values = []
+b_logits = []
 
 for i in range(repetition_number):
 
@@ -217,23 +217,23 @@ for i in range(repetition_number):
 
     for j in range(fold_number):
 
-        devSetIdx = j
-        devSet = data_chunks[j]
+        testSetIdx = j
+        testSet = data_chunks[j]
         trainSet = obtain_train_sets(data_chunks, j)
 
         if os.path.exists(training_data_dir):
             os.remove(training_data_dir)
-        if os.path.exists(dev_data_dir):
-            os.remove(dev_data_dir)
+        # if os.path.exists(dev_data_dir):
+        #     os.remove(dev_data_dir)
         if os.path.exists(test_data_dir):
             os.remove(test_data_dir)
 
         with open(training_data_dir, 'wb') as f:
             pickle.dump(trainSet, f)
-        with open(dev_data_dir, 'wb') as f:
-            pickle.dump(devSet, f)
+        # with open(dev_data_dir, 'wb') as f:
+        #     pickle.dump(devSet, f)
         with open(test_data_dir, 'wb') as f:
-            pickle.dump(test_data, f)
+            pickle.dump(testSet, f)
 
         # update configuration file
         config.set("INTERFACE", "word_embedding_dir", "PubMed-shuffle-win-2.txt")
@@ -260,7 +260,10 @@ for i in range(repetition_number):
 
         model_predictor = predictor.Predictor(predictor_id=predictor_id,
                                               data_interface=data_interface,
-                                              report_directory=predictor_report_path)
+                                              report_directory=predictor_report_path,
+                                              development_set_flag=False,
+                                              test_set_flag=True,
+                                              early_stopping_set='test')
 
         # train model
         model_predictor.train(min_epoch_number=30)
@@ -273,9 +276,9 @@ for i in range(repetition_number):
         dev_truth_value = dev_results[3]
 
         # update predictions and results
-        a_dev_predictions.append(dev_prediction)
-        a_dev_truth_values.append(dev_truth_value)
-        a_dev_logits.append(dev_logits)
+        a_predictions.append(dev_prediction)
+        a_truth_values.append(dev_truth_value)
+        a_logits.append(dev_logits)
 
         # update cv matrix
         precision_matrix[i*fold_number+j, 0] = dev_metric[0]
@@ -309,7 +312,10 @@ for i in range(repetition_number):
 
         model_predictor = predictor.Predictor(predictor_id=predictor_id,
                                               data_interface=data_interface,
-                                              report_directory=predictor_report_path)
+                                              report_directory=predictor_report_path,
+                                              development_set_flag=False,
+                                              test_set_flag=True,
+                                              early_stopping_set='test')
 
         # train model
         model_predictor.train(min_epoch_number=30)
@@ -322,9 +328,9 @@ for i in range(repetition_number):
         dev_truth_value = dev_results[3]
 
         # update predictions and results
-        b_dev_predictions.append(dev_prediction)
-        b_dev_truth_values.append(dev_truth_value)
-        b_dev_logits.append(dev_logits)
+        b_predictions.append(dev_prediction)
+        b_truth_values.append(dev_truth_value)
+        b_logits.append(dev_logits)
 
         # update cv matrix
         precision_matrix[i * fold_number + j, 1] = dev_metric[0]
@@ -342,11 +348,11 @@ for i in range(repetition_number):
 cv_report_file.write("\n 5x2 Cross Validation Results:\n")
 average_f1_measure = best_classifier(f1_measure_matrix)
 
-a_mean_average_value = calculate_map(a_dev_logits, a_dev_truth_values, 0)
+a_mean_average_value = calculate_map(a_logits, a_truth_values, 0)
 cv_report_file.write("\n First Model mAP: {}\n".format(a_mean_average_value))
 cv_report_file.write("First Model Average F1-measure: {}\n".format(average_f1_measure[0]))
 
-b_mean_average_value = calculate_map(b_dev_logits,  a_dev_truth_values, 0)
+b_mean_average_value = calculate_map(b_logits,  b_truth_values, 0)
 cv_report_file.write("\n Second Model mAP: {}\n".format(b_mean_average_value))
 cv_report_file.write("Second Model Average F1-measure: {}\n".format(average_f1_measure[1]))
 
