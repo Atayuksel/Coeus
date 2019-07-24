@@ -92,7 +92,7 @@ class DataInterface(object):
             if not pre_test_file_check:
                 self.read_test_set = False
 
-            if not pre_training_file_check or not pre_dev_file_check or not pre_test_file_check:
+            if not pre_training_file_check and not pre_dev_file_check and not pre_test_file_check:
                 print("Error: no prepared data found in root directory: {}".format(self.root_directory))
                 sys.exit()
 

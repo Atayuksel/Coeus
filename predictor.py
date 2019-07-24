@@ -373,10 +373,10 @@ class Predictor(object):
 
                 # set best development results and test results
                 if self.early_stopping_set == 'development':
-                    current_metric = self.development_epoch_metrics[2]
+                    current_metric = development_epoch_metrics[2]
                     best_metric = self.best_development_metrics[2]
                 if self.early_stopping_set == 'test':
-                    current_metric = self.test_epoch_metrics[2]
+                    current_metric = test_epoch_metrics[2]
                     best_metric = self.best_test_metrics[2]
 
                 if best_metric < current_metric:

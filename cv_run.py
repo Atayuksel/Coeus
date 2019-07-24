@@ -269,7 +269,7 @@ for i in range(repetition_number):
         model_predictor.train(min_epoch_number=30)
 
         # obtain results
-        dev_results = model_predictor.get_development_results()
+        dev_results = model_predictor.get_test_results()
         dev_metric = dev_results[0]
         dev_prediction = dev_results[1]
         dev_logits = dev_results[2]
@@ -321,7 +321,7 @@ for i in range(repetition_number):
         model_predictor.train(min_epoch_number=30)
 
         # obtain results
-        dev_results = model_predictor.get_development_results()
+        dev_results = model_predictor.get_test_results()
         dev_metric = dev_results[0]
         dev_prediction = dev_results[1]
         dev_logits = dev_results[2]
