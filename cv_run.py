@@ -236,7 +236,7 @@ for i in range(repetition_number):
             pickle.dump(testSet, f)
 
         # update configuration file
-        config.set("INTERFACE", "word_embedding_dir", "PubMed-shuffle-win-2.txt")
+        config.set("MODEL", "train_word_embeddings", "true")
 
         # write to configuration file
         with open("config.ini", 'w') as configfile:
@@ -293,7 +293,7 @@ for i in range(repetition_number):
         del data_interface
 
         # 2nd Model
-        config.set("INTERFACE", "word_embedding_dir", "wiki_word_vector.txt")
+        config.set("MODEL", "train_word_embeddings", "false")
         with open("config.ini", 'w') as configfile:
             config.write(configfile)
 

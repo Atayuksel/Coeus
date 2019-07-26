@@ -7,6 +7,7 @@ import bilstm_model as bilstm
 import paper_models as papers
 import progressbar
 import pickle
+import time
 
 
 class Predictor(object):
@@ -39,6 +40,10 @@ class Predictor(object):
         self.learning_rate = float(config[section_name]['learning_rate'])
         self.error_function = config[section_name]['error_function']
         self.output_directory = config[section_name]['output_directory']
+        self.train_word_embeddings = config[section_name]['train_word_embeddings']
+
+        # (self.train_word_embeddings) convert string to boolean values
+        self.train_word_embeddings = True if self.train_word_embeddings == 'true' else False
 
         # create report file
         self.report_name = str(self.predictor_id) + '_' + self.model_type + '_report.txt'
@@ -230,7 +235,8 @@ class Predictor(object):
                                             word_embedding_chunk_number=self.embedding_chunk_number,
                                             learning_rate=self.learning_rate,
                                             lstm_hidden_unit_size=lstm_hidden_unit_size,
-                                            fcl_hidden_unit_size=fcl_hidden_unit_size)
+                                            fcl_hidden_unit_size=fcl_hidden_unit_size,
+                                            train_word_embeddings=self.train_word_embeddings)
 
         elif self.model_type == 'cnn':
             print('Model HyperParameters:')
@@ -263,7 +269,8 @@ class Predictor(object):
                                        word_embedding_chunk_number=self.embedding_chunk_number,
                                        learning_rate=self.learning_rate,
                                        hidden_unit_size=fcl_hidden_unit_size,
-                                       filter_size=cnn_filter_out)
+                                       filter_size=cnn_filter_out,
+                                       train_word_embeddings=self.train_word_embeddings)
 
     def train(self, min_epoch_number):
         with tf.Session() as sess:
@@ -512,7 +519,14 @@ class Predictor(object):
         progress_bar_counter = 0
         progress_bar.start()
 
+        # total time for batch obtaining and model running.
+        obtain_batch_time = 0
+        model_run_time = 0
+
         for batch in range(self.training_num_batch):
+
+            # start time for obtaining batch
+            start_time = time.time()
 
             # obtain batch data
             batch_data = self.data_interface.get_batch(dataset_type='training')
@@ -542,12 +556,18 @@ class Predictor(object):
                     batch_feed_dict[self.distance_protein_tf_placeholder] = batch_distance_protein
                     batch_feed_dict[self.distance_chemical_tf_placeholder] = batch_distance_chemical
 
+                obtain_batch_time = obtain_batch_time + (time.time() - start_time)
+
+                start_time = time.time()
                 tf_sess.run(self.model.optimize, feed_dict=batch_feed_dict)
+                model_run_time = model_run_time + (time.time() - start_time)
 
             progress_bar_counter = progress_bar_counter + 1
             progress_bar.update(progress_bar_counter)
 
         progress_bar.finish()
+        print("Total time for obtaining batch: {}".format(obtain_batch_time))
+        print("Total time for running model: {}".format(model_run_time))
 
     def run_model(self, tf_sess, dataset_type, num_step):
         metrics = [0, 0, 0]  # precision, recall, f1-measure
@@ -564,7 +584,14 @@ class Predictor(object):
         progress_bar_counter = 0
         progress_bar.start()
 
+        # total time for batch obtaining and model running.
+        obtain_batch_time = 0
+        model_run_time = 0
+
         for step in range(num_step):
+            # start time for obtaining batch
+            start_time = time.time()
+
             # obtain batch data
             batch_data = self.data_interface.get_batch(dataset_type=dataset_type)
 
@@ -593,7 +620,11 @@ class Predictor(object):
                     batch_feed_dict[self.distance_protein_tf_placeholder] = batch_distance_protein
                     batch_feed_dict[self.distance_chemical_tf_placeholder] = batch_distance_chemical
 
+                obtain_batch_time = obtain_batch_time + (time.time() - start_time)
+
+                start_time = time.time()
                 batch_logits = tf_sess.run(self.model.prediction, feed_dict=batch_feed_dict)
+                model_run_time = model_run_time + (time.time() - start_time)
 
                 for logit in batch_logits:
                     logits.append(logit)
@@ -615,6 +646,9 @@ class Predictor(object):
             progress_bar.update(progress_bar_counter)
 
         progress_bar.finish()
+
+        print("Total time for obtaining batch: {}".format(obtain_batch_time))
+        print("Total time for running model: {}".format(model_run_time))
 
         metrics[0], metrics[1], metrics[2] = self.calculate_metrics(measures[0], measures[1], measures[2])
         return [metrics, measures, predictions, logits, truth_values]

@@ -19,7 +19,8 @@ class BiLSTMModel:
                  distance_chemical_placeholder, pos_tag_placeholder, iob_tag_placeholder, label_placeholder,
                  word_embedding_placeholder, position_embedding_placeholder, pos_tag_embedding_placeholder,
                  iob_tag_embedding_placeholder, position_embedding_flag, pos_tag_embedding_flag, iob_tag_embedding_flag,
-                 word_embedding_chunk_number, learning_rate, lstm_hidden_unit_size, fcl_hidden_unit_size):
+                 word_embedding_chunk_number, learning_rate, lstm_hidden_unit_size, fcl_hidden_unit_size,
+                 train_word_embeddings):
 
         # data placeholder
         self.word_ids_placeholder = word_ids_placeholder
@@ -60,6 +61,7 @@ class BiLSTMModel:
         self.word_embedding_chunk_number = word_embedding_chunk_number
         self.vocabulary_size = word_embedding_placeholder.get_shape()[0].value
         self.word_embedding_size = word_embedding_placeholder.get_shape()[1].value
+        self.train_word_embeddings = train_word_embeddings
 
         # model hyperparameters
         self.learning_rate = learning_rate
@@ -94,63 +96,63 @@ class BiLSTMModel:
         self.embedding_chunk_list = []
         if self.word_embedding_chunk_number > 0:
             self.embedding_v_1 = tf.Variable(tf.zeros([self.vocabulary_size, self.word_embedding_size]),
-                                             trainable=False,
+                                             trainable=self.train_word_embeddings,
                                              name="word_embedding_variable1",
                                              dtype=tf.float32)
             self.embedding_chunk_list.append(self.embedding_v_1)
 
         if self.word_embedding_chunk_number > 1:
             self.embedding_v_2 = tf.Variable(tf.zeros([self.vocabulary_size, self.word_embedding_size]),
-                                             trainable=False,
+                                             trainable=self.train_word_embeddings,
                                              name="word_embedding_variable2",
                                              dtype=tf.float32)
             self.embedding_chunk_list.append(self.embedding_v_2)
 
         if self.word_embedding_chunk_number > 2:
             self.embedding_v_3 = tf.Variable(tf.zeros([self.vocabulary_size, self.word_embedding_size]),
-                                             trainable=False,
+                                             trainable=self.train_word_embeddings,
                                              name="word_embedding_variable3",
                                              dtype=tf.float32)
             self.embedding_chunk_list.append(self.embedding_v_3)
 
         if self.word_embedding_chunk_number > 3:
             self.embedding_v_4 = tf.Variable(tf.zeros([self.vocabulary_size, self.word_embedding_size]),
-                                             trainable=False,
+                                             trainable=self.train_word_embeddings,
                                              name="word_embedding_variable4",
                                              dtype=tf.float32)
             self.embedding_chunk_list.append(self.embedding_v_4)
 
         if self.word_embedding_chunk_number > 4:
             self.embedding_v_5 = tf.Variable(tf.zeros([self.vocabulary_size, self.word_embedding_size]),
-                                             trainable=False,
+                                             trainable=self.train_word_embeddings,
                                              name="word_embedding_variable5",
                                              dtype=tf.float32)
             self.embedding_chunk_list.append(self.embedding_v_5)
 
         if self.word_embedding_chunk_number > 5:
             self.embedding_v_6 = tf.Variable(tf.zeros([self.vocabulary_size, self.word_embedding_size]),
-                                             trainable=False,
+                                             trainable=self.train_word_embeddings,
                                              name="word_embedding_variable6",
                                              dtype=tf.float32)
             self.embedding_chunk_list.append(self.embedding_v_6)
 
         if self.word_embedding_chunk_number > 6:
             self.embedding_v_7 = tf.Variable(tf.zeros([self.vocabulary_size, self.word_embedding_size]),
-                                             trainable=False,
+                                             trainable=self.train_word_embeddings,
                                              name="word_embedding_variable7",
                                              dtype=tf.float32)
             self.embedding_chunk_list.append(self.embedding_v_7)
 
         if self.word_embedding_chunk_number > 7:
             self.embedding_v_8 = tf.Variable(tf.zeros([self.vocabulary_size, self.word_embedding_size]),
-                                             trainable=False,
+                                             trainable=self.train_word_embeddings,
                                              name="word_embedding_variable8",
                                              dtype=tf.float32)
             self.embedding_chunk_list.append(self.embedding_v_8)
 
         if self.word_embedding_chunk_number > 8:
             self.embedding_v_9 = tf.Variable(tf.zeros([self.vocabulary_size, self.word_embedding_size]),
-                                             trainable=False,
+                                             trainable=self.train_word_embeddings,
                                              name="word_embedding_variable9",
                                              dtype=tf.float32)
             self.embedding_chunk_list.append(self.embedding_v_9)
