@@ -7,6 +7,8 @@ import os
 import sys
 import configparser
 import progressbar
+from nltk.tree import Tree
+from transforms import flatten_deeptree
 
 
 class DataInterface(object):
@@ -26,6 +28,10 @@ class DataInterface(object):
         self.root_directory = config[section_name]['root_directory']
         self.word_tokenizer = config[section_name]['word_tokenizer']
         self.word_embedding_dir = config[section_name]['word_embedding_dir']
+
+        # read undersampling
+        self.under_sampling = config[section_name]['under_sampling']
+        self.under_sampling = True if self.under_sampling == 'true' else False
 
         # flags for reading dataset
         self.read_training_set = True
@@ -63,7 +69,8 @@ class DataInterface(object):
         # prepared dataset
         self.dataset = {'training': {'data': [], 'pos_tags': [], 'iob_tags': [], 'labels': [], 'entities': [],
                                      'abstract_ids': [], 'entity_ids': [], 'seq_lens': [], 'false_positive': [],
-                                     'false_negative': [], 'argument_locations': [], 'max_seq_len': 0, 'batch_idx': 0},
+                                     'false_negative': [], 'argument_locations': [], 'max_seq_len': 0, 'batch_idx': 0,
+                                     'string_data': []},
                         'development': {'data': [], 'pos_tags': [], 'iob_tags': [], 'labels': [], 'entities': [],
                                         'abstract_ids': [], 'entity_ids': [], 'seq_lens': [], 'false_positive': [],
                                         'false_negative': [], 'argument_locations': [], 'max_seq_len': 0, 'batch_idx': 0},
@@ -324,11 +331,20 @@ class DataInterface(object):
             if self.text_selection == 'part':
                 # tokenize candidate relation
                 candidate_relation_tokens = nltk.pos_tag(nltk.word_tokenize(candidate_relation))
-                grammar = "NP: {<DT>?<JJ>*<NN>}"
+                # grammar = "NP: {<DT>?<JJ>*<NN>}"
+
+                grammar = """
+                NP: {<DT>? <JJ>* <NN>*}
+                P: {<IN>}
+                V: {<V.*>}
+                PP: {<P> <NP>}
+                VP: {<V> <NP|PP>*}
+                """
+
                 cp = nltk.RegexpParser(grammar)
                 with redirect_stdout(open(os.devnull, "w")):
                     candidate_relation_tokens = cp.parse(candidate_relation_tokens)
-                candidate_relation_tokens = nltk.tree2conlltags(candidate_relation_tokens)
+                candidate_relation_tokens = nltk.tree2conlltags(flatten_deeptree(candidate_relation_tokens))
 
                 # add tokenized candidate relations to result instance
                 result[1] = candidate_relation_tokens
@@ -354,7 +370,16 @@ class DataInterface(object):
 
                 # tokenize candidate relation
                 candidate_relation_tokens = nltk.pos_tag(nltk.word_tokenize(candidate_relation))
-                grammar = "NP: {<DT>?<JJ>*<NN>}"
+                # grammar = "NP: {<DT>?<JJ>*<NN>}"
+
+                grammar = """
+                NP: {<DT>? <JJ>* <NN>*}
+                P: {<IN>}
+                V: {<V.*>}
+                PP: {<P> <NP>}
+                VP: {<V> <NP|PP>*}
+                """
+
                 cp = nltk.RegexpParser(grammar)
                 with redirect_stdout(open(os.devnull, "w")):
                     candidate_relation_tokens = cp.parse(candidate_relation_tokens)
@@ -366,7 +391,16 @@ class DataInterface(object):
             elif self.text_selection == 'full':
                 # tokenize candidate relation - full sentence
                 instance_txt_tokens = nltk.pos_tag(nltk.word_tokenize(instance_txt))
-                grammar = "NP: {<DT>?<JJ>*<NN>}"
+                # grammar = "NP: {<DT>?<JJ>*<NN>}"
+
+                grammar = """
+                NP: {<DT>? <JJ>* <NN>*}
+                P: {<IN>}
+                V: {<V.*>}
+                PP: {<P> <NP>}
+                VP: {<V> <NP|PP>*}
+                """
+
                 cp = nltk.RegexpParser(grammar)
                 with redirect_stdout(open(os.devnull, "w")):
                     instance_txt_tokens = cp.parse(instance_txt_tokens)
@@ -627,12 +661,12 @@ class DataInterface(object):
                        'iob_tag_embedding_flag': self.iob_tag_embedding_flag}
         if self.position_embedding_flag:
             result_dict['position_embedding_size'] = self.position_embedding_size
-            result_dict['position_ids_size'] = self.self.position_embedding_matrix.shape[0]
+            result_dict['position_ids_size'] = self.position_embedding_matrix.shape[0]
         if self.pos_tag_embedding_flag:
             result_dict['pos_tag_embedding_size'] = self.pos_tag_embedding_size
             result_dict['pos_tag_ids_size'] = self.pos_tag_embedding_matrix.shape[0]
         if self.iob_tag_embedding_flag:
-            result_dict['iob_tag_embedding_flag'] = self.iob_tag_embedding_size
+            result_dict['iob_tag_embedding_size'] = self.iob_tag_embedding_size
             result_dict['iob_tag_ids_size'] = self.iob_tag_embedding_matrix.shape[0]
 
         return result_dict

@@ -44,13 +44,17 @@ class KimCNN:
         self.iob_tag_embedding_flag = iob_tag_embedding_flag
 
         # embedding sizes
-        self.position_tag_size = position_embedding_placeholder.get_shape()[0].value
-        self.pos_tag_size = pos_tag_embedding_placeholder.get_shape()[0].value
-        self.iob_tag_size = iob_tag_embedding_placeholder.get_shape()[0].value
+        if self.position_embedding_flag:
+            self.position_tag_size = position_embedding_placeholder.get_shape()[0].value
+            self.position_embedding_size = position_embedding_placeholder.get_shape()[1].value
 
-        self.position_embedding_size = position_embedding_placeholder.get_shape()[1].value
-        self.pos_tag_embedding_size = pos_tag_embedding_placeholder.get_shape()[1].value
-        self.iob_tag_embedding_size = iob_tag_embedding_placeholder.get_shape()[1].value
+        if self.pos_tag_embedding_flag:
+            self.pos_tag_size = pos_tag_embedding_placeholder.get_shape()[0].value
+            self.pos_tag_embedding_size = pos_tag_embedding_placeholder.get_shape()[1].value
+
+        if self.iob_tag_embedding_flag:
+            self.iob_tag_size = iob_tag_embedding_placeholder.get_shape()[0].value
+            self.iob_tag_embedding_size = iob_tag_embedding_placeholder.get_shape()[1].value
 
         # word embedding
         self.word_embedding_chunk_number = word_embedding_chunk_number
@@ -101,69 +105,75 @@ class KimCNN:
         }
 
         # Embedding Variables
-        self.embedding_chunk_list = []
-        if self.word_embedding_chunk_number > 0:
-            self.embedding_v_1 = tf.Variable(tf.zeros([self.vocabulary_size, self.word_embedding_size]),
-                                             trainable=self.train_word_embeddings,
-                                             name="word_embedding_variable1",
-                                             dtype=tf.float32)
-            self.embedding_chunk_list.append(self.embedding_v_1)
+        if self.word_embedding_chunk_number == 0:
+            self.unique_embedding_v_0 = tf.Variable(tf.zeros([self.vocabulary_size, self.word_embedding_size]),
+                                                    trainable=self.train_word_embeddings,
+                                                    name="word_embedding_variable0",
+                                                    dtype=tf.float32)
+        else:
+            self.embedding_chunk_list = []
+            if self.word_embedding_chunk_number > 0:
+                self.embedding_v_1 = tf.Variable(tf.zeros([self.vocabulary_size, self.word_embedding_size]),
+                                                 trainable=self.train_word_embeddings,
+                                                 name="word_embedding_variable1",
+                                                 dtype=tf.float32)
+                self.embedding_chunk_list.append(self.embedding_v_1)
 
-        if self.word_embedding_chunk_number > 1:
-            self.embedding_v_2 = tf.Variable(tf.zeros([self.vocabulary_size, self.word_embedding_size]),
-                                             trainable=self.train_word_embeddings,
-                                             name="word_embedding_variable2",
-                                             dtype=tf.float32)
-            self.embedding_chunk_list.append(self.embedding_v_2)
+            if self.word_embedding_chunk_number > 1:
+                self.embedding_v_2 = tf.Variable(tf.zeros([self.vocabulary_size, self.word_embedding_size]),
+                                                 trainable=self.train_word_embeddings,
+                                                 name="word_embedding_variable2",
+                                                 dtype=tf.float32)
+                self.embedding_chunk_list.append(self.embedding_v_2)
 
-        if self.word_embedding_chunk_number > 2:
-            self.embedding_v_3 = tf.Variable(tf.zeros([self.vocabulary_size, self.word_embedding_size]),
-                                             trainable=self.train_word_embeddings,
-                                             name="word_embedding_variable3",
-                                             dtype=tf.float32)
-            self.embedding_chunk_list.append(self.embedding_v_3)
+            if self.word_embedding_chunk_number > 2:
+                self.embedding_v_3 = tf.Variable(tf.zeros([self.vocabulary_size, self.word_embedding_size]),
+                                                 trainable=self.train_word_embeddings,
+                                                 name="word_embedding_variable3",
+                                                 dtype=tf.float32)
+                self.embedding_chunk_list.append(self.embedding_v_3)
 
-        if self.word_embedding_chunk_number > 3:
-            self.embedding_v_4 = tf.Variable(tf.zeros([self.vocabulary_size, self.word_embedding_size]),
-                                             trainable=self.train_word_embeddings,
-                                             name="word_embedding_variable4",
-                                             dtype=tf.float32)
-            self.embedding_chunk_list.append(self.embedding_v_4)
+            if self.word_embedding_chunk_number > 3:
+                self.embedding_v_4 = tf.Variable(tf.zeros([self.vocabulary_size, self.word_embedding_size]),
+                                                 trainable=self.train_word_embeddings,
+                                                 name="word_embedding_variable4",
+                                                 dtype=tf.float32)
+                self.embedding_chunk_list.append(self.embedding_v_4)
 
-        if self.word_embedding_chunk_number > 4:
-            self.embedding_v_5 = tf.Variable(tf.zeros([self.vocabulary_size, self.word_embedding_size]),
-                                             trainable=self.train_word_embeddings,
-                                             name="word_embedding_variable5",
-                                             dtype=tf.float32)
-            self.embedding_chunk_list.append(self.embedding_v_5)
+            if self.word_embedding_chunk_number > 4:
+                self.embedding_v_5 = tf.Variable(tf.zeros([self.vocabulary_size, self.word_embedding_size]),
+                                                 trainable=self.train_word_embeddings,
+                                                 name="word_embedding_variable5",
+                                                 dtype=tf.float32)
+                self.embedding_chunk_list.append(self.embedding_v_5)
 
-        if self.word_embedding_chunk_number > 5:
-            self.embedding_v_6 = tf.Variable(tf.zeros([self.vocabulary_size, self.word_embedding_size]),
-                                             trainable=self.train_word_embeddings,
-                                             name="word_embedding_variable6",
-                                             dtype=tf.float32)
-            self.embedding_chunk_list.append(self.embedding_v_6)
+            if self.word_embedding_chunk_number > 5:
+                self.embedding_v_6 = tf.Variable(tf.zeros([self.vocabulary_size, self.word_embedding_size]),
+                                                 trainable=self.train_word_embeddings,
+                                                 name="word_embedding_variable6",
+                                                 dtype=tf.float32)
+                self.embedding_chunk_list.append(self.embedding_v_6)
 
-        if self.word_embedding_chunk_number > 6:
-            self.embedding_v_7 = tf.Variable(tf.zeros([self.vocabulary_size, self.word_embedding_size]),
-                                             trainable=self.train_word_embeddings,
-                                             name="word_embedding_variable7",
-                                             dtype=tf.float32)
-            self.embedding_chunk_list.append(self.embedding_v_7)
+            if self.word_embedding_chunk_number > 6:
+                self.embedding_v_7 = tf.Variable(tf.zeros([self.vocabulary_size, self.word_embedding_size]),
+                                                 trainable=self.train_word_embeddings,
+                                                 name="word_embedding_variable7",
+                                                 dtype=tf.float32)
+                self.embedding_chunk_list.append(self.embedding_v_7)
 
-        if self.word_embedding_chunk_number > 7:
-            self.embedding_v_8 = tf.Variable(tf.zeros([self.vocabulary_size, self.word_embedding_size]),
-                                             trainable=self.train_word_embeddings,
-                                             name="word_embedding_variable8",
-                                             dtype=tf.float32)
-            self.embedding_chunk_list.append(self.embedding_v_8)
+            if self.word_embedding_chunk_number > 7:
+                self.embedding_v_8 = tf.Variable(tf.zeros([self.vocabulary_size, self.word_embedding_size]),
+                                                 trainable=self.train_word_embeddings,
+                                                 name="word_embedding_variable8",
+                                                 dtype=tf.float32)
+                self.embedding_chunk_list.append(self.embedding_v_8)
 
-        if self.word_embedding_chunk_number > 8:
-            self.embedding_v_9 = tf.Variable(tf.zeros([self.vocabulary_size, self.word_embedding_size]),
-                                             trainable=self.train_word_embeddings,
-                                             name="word_embedding_variable9",
-                                             dtype=tf.float32)
-            self.embedding_chunk_list.append(self.embedding_v_9)
+            if self.word_embedding_chunk_number > 8:
+                self.embedding_v_9 = tf.Variable(tf.zeros([self.vocabulary_size, self.word_embedding_size]),
+                                                 trainable=self.train_word_embeddings,
+                                                 name="word_embedding_variable9",
+                                                 dtype=tf.float32)
+                self.embedding_chunk_list.append(self.embedding_v_9)
 
         if self.position_embedding_flag:
             self.distance_chemical_embedding = tf.Variable(tf.random_normal([self.position_tag_size,
@@ -193,31 +203,45 @@ class KimCNN:
                                                  name="iob_tag_embedding_variable",
                                                  dtype=tf.float32)
 
-        if self.word_embedding_chunk_number > 0:
-            self.assign1
-        if self.word_embedding_chunk_number > 1:
-            self.assign2
-        if self.word_embedding_chunk_number > 2:
-            self.assign3
-        if self.word_embedding_chunk_number > 3:
-            self.assign4
-        if self.word_embedding_chunk_number > 4:
-            self.assign5
-        if self.word_embedding_chunk_number > 5:
-            self.assign6
-        if self.word_embedding_chunk_number > 6:
-            self.assign7
-        if self.word_embedding_chunk_number > 7:
-            self.assign8
-        if self.word_embedding_chunk_number > 8:
-            self.assign9
+        if self.word_embedding_chunk_number != 0:
+            if self.word_embedding_chunk_number > 0:
+                self.assign1
+            if self.word_embedding_chunk_number > 1:
+                self.assign2
+            if self.word_embedding_chunk_number > 2:
+                self.assign3
+            if self.word_embedding_chunk_number > 3:
+                self.assign4
+            if self.word_embedding_chunk_number > 4:
+                self.assign5
+            if self.word_embedding_chunk_number > 5:
+                self.assign6
+            if self.word_embedding_chunk_number > 6:
+                self.assign7
+            if self.word_embedding_chunk_number > 7:
+                self.assign8
+            if self.word_embedding_chunk_number > 8:
+                self.assign9
+        else:
+            self.assign0
 
-        self.assign_chemical_position_embeddings
-        self.assign_protein_position_embeddings
-        self.assign_pos_tag_embeddings
-        self.assign_iob_tag_embeddings
+        if self.position_embedding_flag:
+            self.assign_chemical_position_embeddings
+            self.assign_protein_position_embeddings
+
+        if self.pos_tag_embedding_flag:
+            self.assign_pos_tag_embeddings
+
+        if self.iob_tag_embedding_flag:
+            self.assign_iob_tag_embeddings
+
         self.prediction
         self.optimize
+
+    @lazy_property
+    def assign0(self):
+        word_embedding_init0 = self.unique_embedding_v_0.assign(self.word_embedding_placeholder)
+        return word_embedding_init0
 
     @lazy_property
     def assign_chemical_position_embeddings(self):
@@ -299,25 +323,30 @@ class KimCNN:
     def prediction(self):
         # get data and reshape it w.r.t network
         # embedding_data = tf.nn.embedding_lookup(self.embedding_v, self.data)
-        word_embedding_data = tf.nn.embedding_lookup(params=self.embedding_chunk_list,
-                                                     ids=self.data_placeholder, partition_strategy='div')
+        if self.word_embedding_chunk_number != 0:
+            word_embedding_data = tf.nn.embedding_lookup(params=self.embedding_chunk_list,
+                                                         ids=self.word_ids_placeholder, partition_strategy='div')
+        else:
+            word_embedding_data = tf.nn.embedding_lookup(params=self.unique_embedding_v_0,
+                                                         ids=self.word_ids_placeholder)
+
         word_embedding_data = tf.reshape(word_embedding_data, [self.batch_size,
-                                                               self.max_seq_length,
+                                                               self.max_seq_len,
                                                                self.word_embedding_size,
                                                                1])
         data = word_embedding_data
         if self.position_embedding_flag:
             protein_distance_embedding = tf.nn.embedding_lookup(params=self.distance_protein_embedding,
-                                                                ids=self.distance_protein_placeholder)
+                                                                ids=self.distance_to_protein_placeholder)
             protein_distance_data = tf.reshape(protein_distance_embedding, [self.batch_size,
-                                                                            self.max_seq_length,
+                                                                            self.max_seq_len,
                                                                             self.position_embedding_size,
                                                                             1])
 
             chemical_distance_embedding = tf.nn.embedding_lookup(params=self.distance_chemical_embedding,
-                                                                 ids=self.distance_chemical_placeholder)
+                                                                 ids=self.distance_to_chemical_placeholder)
             chemical_distance_data = tf.reshape(chemical_distance_embedding, [self.batch_size,
-                                                                              self.max_seq_length,
+                                                                              self.max_seq_len,
                                                                               self.position_embedding_size,
                                                                               1])
             data = tf.concat([data, protein_distance_data, chemical_distance_data], 2)
@@ -326,7 +355,7 @@ class KimCNN:
             pos_tag_embedding = tf.nn.embedding_lookup(params=self.pos_tag_embedding,
                                                        ids=self.pos_tag_placeholder)
             pos_tag_data = tf.reshape(pos_tag_embedding, [self.batch_size,
-                                                          self.max_seq_length,
+                                                          self.max_seq_len,
                                                           self.pos_tag_embedding_size,
                                                           1])
             data = tf.concat([data, pos_tag_data], 2)
@@ -335,7 +364,7 @@ class KimCNN:
             iob_tag_embedding = tf.nn.embedding_lookup(params=self.iob_tag_embedding,
                                                        ids=self.iob_tag_placeholder)
             iob_tag_data = tf.reshape(iob_tag_embedding, [self.batch_size,
-                                                          self.max_seq_length,
+                                                          self.max_seq_len,
                                                           self.iob_tag_embedding_size,
                                                           1])
             data = tf.concat([data, iob_tag_data], 2)
@@ -363,7 +392,7 @@ class KimCNN:
         fc1 = tf.nn.relu(fc1)
 
         # apply dropout
-        fc1 = tf.nn.dropout(fc1, rate=0.5)
+        fc1 = tf.nn.dropout(fc1, keep_prob=0.5)
 
         # output, class predictions
         out = tf.add(tf.matmul(fc1, self.weights['out']), self.biases['out'])

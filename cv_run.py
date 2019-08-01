@@ -157,7 +157,7 @@ def convert_one_hot(data):
     return result_data
 
 
-repetition_number = 2
+repetition_number = 5
 fold_number = 2
 
 # create a report file
@@ -166,6 +166,11 @@ cv_report_file = open('cv_report_file', 'w')
 # initialize config parser
 config = configparser.ConfigParser()
 config.read('config.ini')
+
+# set root directory
+config.set("INTERFACE", "root_directory", "/content/drive/My Drive/Coeus/colab/dataset")
+with open("config.ini", 'w') as configfile:
+    config.write(configfile)
 
 # read dataset parameters
 root_directory = config['INTERFACE']['root_directory']
@@ -236,8 +241,7 @@ for i in range(repetition_number):
             pickle.dump(testSet, f)
 
         # update configuration file
-        config.set("MODEL", "train_word_embeddings", "true")
-
+        config.set("EMBEDDINGS", "iob_tag_embedding_flag", "true")
         # write to configuration file
         with open("config.ini", 'w') as configfile:
             config.write(configfile)
@@ -266,7 +270,7 @@ for i in range(repetition_number):
                                               early_stopping_set='test')
 
         # train model
-        model_predictor.train(min_epoch_number=30)
+        model_predictor.train(min_epoch_number=15)
 
         # obtain results
         dev_results = model_predictor.get_test_results()
@@ -293,7 +297,7 @@ for i in range(repetition_number):
         del data_interface
 
         # 2nd Model
-        config.set("MODEL", "train_word_embeddings", "false")
+        config.set("EMBEDDINGS", "iob_tag_embedding_flag", "false")
         with open("config.ini", 'w') as configfile:
             config.write(configfile)
 
@@ -318,7 +322,7 @@ for i in range(repetition_number):
                                               early_stopping_set='test')
 
         # train model
-        model_predictor.train(min_epoch_number=30)
+        model_predictor.train(min_epoch_number=15)
 
         # obtain results
         dev_results = model_predictor.get_test_results()

@@ -41,6 +41,7 @@ class Predictor(object):
         self.error_function = config[section_name]['error_function']
         self.output_directory = config[section_name]['output_directory']
         self.train_word_embeddings = config[section_name]['train_word_embeddings']
+        self.platform = config[section_name]['platform']
 
         # (self.train_word_embeddings) convert string to boolean values
         self.train_word_embeddings = True if self.train_word_embeddings == 'true' else False
@@ -108,11 +109,12 @@ class Predictor(object):
 
         # split word embedding matrix
         self.embedding_chunk_number = 0
-        for i in range(10, 0, -1):
-            if self.vocabulary_size % i == 0:
-                self.embedding_chunk_number = i
-                break
-        self.word_embedding_matrices = np.split(self.word_embedding_matrix, self.embedding_chunk_number)
+        if self.platform != 'gcp':
+            for i in range(10, 0, -1):
+                if self.vocabulary_size % i == 0:
+                    self.embedding_chunk_number = i
+                    break
+            self.word_embedding_matrices = np.split(self.word_embedding_matrix, self.embedding_chunk_number)
 
         # calculate number of steps in batch for each dataset
         self.training_num_batch = math.ceil(len(self.data_interface.dataset['training']['data'])
@@ -176,9 +178,14 @@ class Predictor(object):
         self.label_tf_placeholder = tf.placeholder(tf.float32, [self.data_interface.batch_size, 2],
                                                    name='label_placeholder')
 
-        self.word_embedding_tf_placeholder = tf.placeholder(tf.float32, [self.word_embedding_matrices[0].shape[0],
-                                                                         self.word_embedding_dimension],
-                                                            name='word_embedding_placeholder')
+        if self.platform != 'gcp':
+            self.word_embedding_tf_placeholder = tf.placeholder(tf.float32, [self.word_embedding_matrices[0].shape[0],
+                                                                             self.word_embedding_dimension],
+                                                                name='word_embedding_placeholder')
+        else:
+            self.word_embedding_tf_placeholder = tf.placeholder(tf.float32, [self.word_embedding_matrix.shape[0],
+                                                                             self.word_embedding_dimension],
+                                                                name='word_embedding_placeholder')
 
         if self.position_embedding_flag:
             self.position_embedding_tf_placeholder = tf.placeholder(tf.float32, [self.position_ids_size,
@@ -280,24 +287,27 @@ class Predictor(object):
             sess.run(tf.initialize_all_variables())
 
             # initialize word embeddings variables in the model
-            if self.embedding_chunk_number > 0:
-                sess.run(self.model.assign1, feed_dict={self.word_embedding_tf_placeholder: self.word_embedding_matrices[0]})
-            if self.embedding_chunk_number > 1:
-                sess.run(self.model.assign2, feed_dict={self.word_embedding_tf_placeholder: self.word_embedding_matrices[1]})
-            if self.embedding_chunk_number > 2:
-                sess.run(self.model.assign3, feed_dict={self.word_embedding_tf_placeholder: self.word_embedding_matrices[2]})
-            if self.embedding_chunk_number > 3:
-                sess.run(self.model.assign4, feed_dict={self.word_embedding_tf_placeholder: self.word_embedding_matrices[3]})
-            if self.embedding_chunk_number > 4:
-                sess.run(self.model.assign5, feed_dict={self.word_embedding_tf_placeholder: self.word_embedding_matrices[4]})
-            if self.embedding_chunk_number > 5:
-                sess.run(self.model.assign6, feed_dict={self.word_embedding_tf_placeholder: self.word_embedding_matrices[5]})
-            if self.embedding_chunk_number > 6:
-                sess.run(self.model.assign7, feed_dict={self.word_embedding_tf_placeholder: self.word_embedding_matrices[6]})
-            if self.embedding_chunk_number > 7:
-                sess.run(self.model.assign8, feed_dict={self.word_embedding_tf_placeholder: self.word_embedding_matrices[7]})
-            if self.embedding_chunk_number > 8:
-                sess.run(self.model.assign9, feed_dict={self.word_embedding_tf_placeholder: self.word_embedding_matrices[8]})
+            if self.platform != 'gcp':
+                if self.embedding_chunk_number > 0:
+                    sess.run(self.model.assign1, feed_dict={self.word_embedding_tf_placeholder: self.word_embedding_matrices[0]})
+                if self.embedding_chunk_number > 1:
+                    sess.run(self.model.assign2, feed_dict={self.word_embedding_tf_placeholder: self.word_embedding_matrices[1]})
+                if self.embedding_chunk_number > 2:
+                    sess.run(self.model.assign3, feed_dict={self.word_embedding_tf_placeholder: self.word_embedding_matrices[2]})
+                if self.embedding_chunk_number > 3:
+                    sess.run(self.model.assign4, feed_dict={self.word_embedding_tf_placeholder: self.word_embedding_matrices[3]})
+                if self.embedding_chunk_number > 4:
+                    sess.run(self.model.assign5, feed_dict={self.word_embedding_tf_placeholder: self.word_embedding_matrices[4]})
+                if self.embedding_chunk_number > 5:
+                    sess.run(self.model.assign6, feed_dict={self.word_embedding_tf_placeholder: self.word_embedding_matrices[5]})
+                if self.embedding_chunk_number > 6:
+                    sess.run(self.model.assign7, feed_dict={self.word_embedding_tf_placeholder: self.word_embedding_matrices[6]})
+                if self.embedding_chunk_number > 7:
+                    sess.run(self.model.assign8, feed_dict={self.word_embedding_tf_placeholder: self.word_embedding_matrices[7]})
+                if self.embedding_chunk_number > 8:
+                    sess.run(self.model.assign9, feed_dict={self.word_embedding_tf_placeholder: self.word_embedding_matrices[8]})
+            else:
+                sess.run(self.model.assign0, feed_dict={self.word_embedding_tf_placeholder: self.word_embedding_matrix})
 
             # initialize embeddings variables in the model
             if self.position_embedding_flag:
@@ -409,33 +419,33 @@ class Predictor(object):
                         self.best_test_logits = test_epoch_logits
 
                 # check early stopping
-                if self.best_epoch*2 < epoch and epoch > min_epoch_number:
-                    if self.development_set_flag:
-                        self.report_file.write("\nBest Development Results:\n")
-                        self.report_file.write("Development Precision: {}".format(self.best_development_metrics[0]))
-                        self.report_file.write("Development Recall: {}".format(self.best_development_metrics[1]))
-                        self.report_file.write("Development F1-measure: {}".format(self.best_development_metrics[2]))
-
-                        pickle.dump(self.best_development_truth_values, open(self.report_directory + '/' +
-                                                                             "best_development_truth_values.pkl", "wb"))
-                        pickle.dump(self.best_development_predictions, open(self.report_directory + '/' +
-                                                                            "best_development_predictions.pkl", "wb"))
-                        pickle.dump(self.best_development_logits, open(self.report_directory + '/' +
-                                                                       "best_development_logits.pkl", "wb"))
-                    if self.test_set_flag:
-                        self.report_file.write("\nBest Test Results:\n")
-                        self.report_file.write("Test Precision: {}".format(self.best_test_metrics[0]))
-                        self.report_file.write("Test Recall: {}".format(self.best_test_metrics[1]))
-                        self.report_file.write("Test F1-measure: {}".format(self.best_test_metrics[2]))
-
-                        pickle.dump(self.best_test_truth_values, open(self.report_directory + '/' +
-                                                                      "best_test_truth_values.pkl", "wb"))
-                        pickle.dump(self.best_test_predictions, open(self.report_directory + '/' +
-                                                                     "best_test_predictions.pkl", "wb"))
-                        pickle.dump(self.best_test_logits, open(self.report_directory + '/' +
-                                                                "best_test_logits.pkl", "wb"))
-
-                    break
+                # if self.best_epoch*2 < epoch and epoch > min_epoch_number:
+                #     if self.development_set_flag:
+                #         self.report_file.write("\nBest Development Results:\n")
+                #         self.report_file.write("Development Precision: {}".format(self.best_development_metrics[0]))
+                #         self.report_file.write("Development Recall: {}".format(self.best_development_metrics[1]))
+                #         self.report_file.write("Development F1-measure: {}".format(self.best_development_metrics[2]))
+                #
+                #         pickle.dump(self.best_development_truth_values, open(self.report_directory + '/' +
+                #                                                              "best_development_truth_values.pkl", "wb"))
+                #         pickle.dump(self.best_development_predictions, open(self.report_directory + '/' +
+                #                                                             "best_development_predictions.pkl", "wb"))
+                #         pickle.dump(self.best_development_logits, open(self.report_directory + '/' +
+                #                                                        "best_development_logits.pkl", "wb"))
+                #     if self.test_set_flag:
+                #         self.report_file.write("\nBest Test Results:\n")
+                #         self.report_file.write("Test Precision: {}".format(self.best_test_metrics[0]))
+                #         self.report_file.write("Test Recall: {}".format(self.best_test_metrics[1]))
+                #         self.report_file.write("Test F1-measure: {}".format(self.best_test_metrics[2]))
+                #
+                #         pickle.dump(self.best_test_truth_values, open(self.report_directory + '/' +
+                #                                                       "best_test_truth_values.pkl", "wb"))
+                #         pickle.dump(self.best_test_predictions, open(self.report_directory + '/' +
+                #                                                      "best_test_predictions.pkl", "wb"))
+                #         pickle.dump(self.best_test_logits, open(self.report_directory + '/' +
+                #                                                 "best_test_logits.pkl", "wb"))
+                #
+                #     break
 
         if self.development_set_flag:
             self.report_file.write("\nBest Development Results:\n")
@@ -535,13 +545,19 @@ class Predictor(object):
             batch_word_ids = batch_data[0]
             batch_seq_lens = batch_data[1]
             batch_labels = batch_data[2]
+
+            idx = 3
             if self.pos_tag_embedding_flag:
-                batch_pos_ids = batch_data[3]
+                batch_pos_ids = batch_data[idx]
+                idx = idx + 1
             if self.iob_tag_embedding_flag:
-                batch_iob_ids = batch_data[4]
+                batch_iob_ids = batch_data[idx]
+                idx = idx + 1
             if self.position_embedding_flag:
-                batch_distance_protein = batch_data[5]
-                batch_distance_chemical = batch_data[6]
+                batch_distance_protein = batch_data[idx]
+                idx = idx + 1
+                batch_distance_chemical = batch_data[idx]
+                idx = idx + 1
 
             if len(batch_labels) == self.data_interface.batch_size:
                 batch_feed_dict = {self.word_ids_tf_placeholder: batch_word_ids,
@@ -599,13 +615,19 @@ class Predictor(object):
             batch_word_ids = batch_data[0]
             batch_seq_lens = batch_data[1]
             batch_labels = batch_data[2]
+
+            idx = 3
             if self.pos_tag_embedding_flag:
-                batch_pos_ids = batch_data[3]
+                batch_pos_ids = batch_data[idx]
+                idx = idx + 1
             if self.iob_tag_embedding_flag:
-                batch_iob_ids = batch_data[4]
+                batch_iob_ids = batch_data[idx]
+                idx = idx + 1
             if self.position_embedding_flag:
-                batch_distance_protein = batch_data[5]
-                batch_distance_chemical = batch_data[6]
+                batch_distance_protein = batch_data[idx]
+                idx = idx + 1
+                batch_distance_chemical = batch_data[idx]
+                idx = idx + 1
 
             if len(batch_labels) == self.data_interface.batch_size:
                 batch_feed_dict = {self.word_ids_tf_placeholder: batch_word_ids,
